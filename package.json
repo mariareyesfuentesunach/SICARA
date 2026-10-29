@@ -1,0 +1,28 @@
+{
+  "name": "sicara",
+  "version": "1.0.0",
+  "description": "SICARA - Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "server": "node server/index.js",
+    "dev": "concurrently \"nodemon server/index.js\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client",
+    "init-admin": "node server/scripts/init-admin.js"
+  },
+  "keywords": ["sicara", "educacion", "asistencia", "escuelas-rurales"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "nodemon": "^3.1.9"
+  }
+}
