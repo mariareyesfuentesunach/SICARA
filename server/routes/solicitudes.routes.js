@@ -376,3 +376,4 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+

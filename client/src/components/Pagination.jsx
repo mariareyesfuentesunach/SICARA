@@ -68,3 +68,4 @@ export default function Pagination({ page, totalPages, total, limit, onPageChang
     </div>
   );
 }
+

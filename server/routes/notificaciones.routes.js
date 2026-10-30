@@ -136,3 +136,4 @@ router.put('/alerta/:id/resolver', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+

@@ -104,3 +104,4 @@ npm run dev
    * Cambio de contraseña seguro con validación de la contraseña actual.
 8. **Cerrar Sesión:**
    * Modal de confirmación y eliminación segura del token de sesión.
+

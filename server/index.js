@@ -46,40 +46,20 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Redirigir /api o /api/ a la interfaz web si se abre en el navegador
+app.get(['/api', '/api/'], (req, res) => {
+  res.redirect('/');
+});
+
 // Servir frontend compilado en producción
 const clientDistPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
 
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith('/api/')) {
     return res.status(404).json({ success: false, message: 'Endpoint de API no encontrado.' });
   }
-  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-    if (err) {
-      res.status(200).send(`
-        <!DOCTYPE html>
-        <html lang="es">
-          <head>
-            <meta charset="UTF-8" />
-            <title>SICARA - Sistema de Control Escolar Rural</title>
-            <style>
-              body { font-family: sans-serif; background: #F8F5F5; color: #292329; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .box { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); text-align: center; max-width: 500px; border-top: 5px solid #722F37; }
-              h1 { color: #722F37; margin-bottom: 0.5rem; }
-              p { color: #555; }
-            </style>
-          </head>
-          <body>
-            <div class="box">
-              <h1>SICARA</h1>
-              <p>El servidor backend de SICARA está activo y conectado a PostgreSQL.</p>
-              <p>Por favor ejecute la compilación del cliente o inicie Vite en modo de desarrollo.</p>
-            </div>
-          </body>
-        </html>
-      `);
-    }
-  });
+  res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 app.listen(PORT, () => {
@@ -89,3 +69,4 @@ app.listen(PORT, () => {
   console.log(`📡 PostgreSQL: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
   console.log(`=======================================================`);
 });
+

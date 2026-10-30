@@ -721,3 +721,4 @@ export default function SolicitudesView({ onRefreshDashboard }) {
     </div>
   );
 }
+
