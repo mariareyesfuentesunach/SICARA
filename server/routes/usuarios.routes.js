@@ -92,6 +92,99 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/usuarios/por-escuela - Listado de escuelas con usuarios relacionados y su desglose
+router.get('/por-escuela', authMiddleware, async (req, res) => {
+  try {
+    const search = (req.query.search || '').trim();
+    let params = [];
+    let searchCondition = '';
+
+    if (search) {
+      searchCondition = `
+        AND (
+          e.nombre_escuela ILIKE $1 OR 
+          e.cct ILIKE $1 OR 
+          e.municipio ILIKE $1 OR 
+          u.nombre ILIKE $1 OR 
+          u.apellidos ILIKE $1 OR 
+          u.correo ILIKE $1
+        )
+      `;
+      params.push(`%${search}%`);
+    }
+
+    const escuelasQuery = `
+      SELECT DISTINCT 
+        e.id_escuela, 
+        e.nombre_escuela, 
+        e.cct, 
+        e.nivel_educativo, 
+        e.turno, 
+        e.municipio, 
+        e.estado,
+        e.direccion,
+        e.telefono,
+        e.correo_institucional,
+        e.estado_escuela
+      FROM escuelas e
+      INNER JOIN usuario u ON e.id_escuela = u.id_escuela
+      WHERE 1=1 ${searchCondition}
+      ORDER BY e.nombre_escuela ASC
+    `;
+
+    const escuelasRes = await db.query(escuelasQuery, params);
+
+    const escuelasConUsuarios = await Promise.all(
+      escuelasRes.rows.map(async (esc) => {
+        // Consultar Directivo encargado de acuerdo a relaciones reales
+        const directivoRes = await db.query(
+          `SELECT id_usuario, nombre, apellidos, correo, rol, estado, fecha_registro
+           FROM usuario
+           WHERE id_escuela = $1 AND rol = 'Directivo'
+           LIMIT 1`,
+          [esc.id_escuela]
+        );
+
+        // Consultar Profesores registrados de acuerdo a relaciones reales
+        const profesoresRes = await db.query(
+          `SELECT 
+             u.id_usuario, 
+             u.nombre, 
+             u.apellidos, 
+             u.correo, 
+             u.rol, 
+             u.estado, 
+             u.fecha_registro,
+             d.especialidad,
+             d.curp,
+             d.telefono as telefono_docente
+           FROM usuario u
+           LEFT JOIN docentes d ON u.id_usuario = d.id_usuario
+           WHERE u.id_escuela = $1 AND u.rol = 'Docente'
+           ORDER BY u.nombre ASC`,
+          [esc.id_escuela]
+        );
+
+        return {
+          ...esc,
+          directivo: directivoRes.rows[0] || null,
+          profesores: profesoresRes.rows,
+          totalUsuarios: (directivoRes.rows.length ? 1 : 0) + profesoresRes.rows.length,
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      escuelas: escuelasConUsuarios,
+      totalEscuelas: escuelasConUsuarios.length,
+    });
+  } catch (error) {
+    console.error('Error en GET /api/usuarios/por-escuela:', error);
+    return res.status(500).json({ success: false, message: 'Error al consultar usuarios por escuela.' });
+  }
+});
+
 // GET /api/usuarios/:id - Detalle de usuario
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
@@ -134,7 +227,7 @@ router.put('/:id/rol', authMiddleware, async (req, res) => {
     if (!rol || !['Directivo', 'Docente'].includes(rol)) {
       return res.status(400).json({
         success: false,
-        message: 'Rol no permitido. Solo se puede alternar entre "Directivo" y "Docente". El Administrador General es una cuenta única.',
+        message: 'Rol no permitido. Solo se puede alternar entre "Directivo" y "Docente". Las cuentas de Administrador General se gestionan en su módulo exclusivo.',
       });
     }
 
@@ -150,7 +243,7 @@ router.put('/:id/rol', authMiddleware, async (req, res) => {
     if (targetUser.rol === 'Administrador') {
       return res.status(403).json({
         success: false,
-        message: 'Operación prohibida: El rol del Administrador General no puede ser modificado.',
+        message: 'Operación prohibida: Las cuentas administrativas no pueden ser modificadas desde este módulo. Utilice el módulo de Administradores.',
       });
     }
 
@@ -188,11 +281,11 @@ router.put('/:id/estado', authMiddleware, async (req, res) => {
 
     const targetUser = userRes.rows[0];
 
-    // Protección estricta: No inactivar la cuenta del Administrador General
+    // Protección estricta: No inactivar administradores desde esta vista
     if (targetUser.rol === 'Administrador') {
       return res.status(403).json({
         success: false,
-        message: 'Operación prohibida: No es posible desactivar la cuenta del Administrador General.',
+        message: 'Operación prohibida: La gestión de estado para administradores debe realizarse exclusivamente desde el módulo de Administradores.',
       });
     }
 
@@ -211,4 +304,3 @@ router.put('/:id/estado', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
-

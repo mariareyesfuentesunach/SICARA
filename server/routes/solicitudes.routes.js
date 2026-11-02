@@ -460,7 +460,7 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Notificación por correo a la escuela (real si está configurado SMTP)
+    // Notificación por correo a la escuela (real si está configurado SMTP, adjuntando PDF oficial)
     const emailDest = sol.correo_responsable || sol.correo_institucional;
     let emailStatus = null;
     if (emailDest) {
@@ -468,6 +468,11 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
         destinatario: emailDest,
         nombreEscuela: sol.nombre_escuela,
         estado: 'Aprobada',
+        solicitudData: {
+          ...sol,
+          id_solicitud: id,
+          admin_nombre: `${req.user.nombre} ${req.user.apellidos || ''}`.trim(),
+        },
       });
     }
 
@@ -502,11 +507,9 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
       });
     }
 
-    // Verificar existencia
+    // Verificar existencia y estado previo para evitar duplicados
     const solRes = await db.query(
-      `SELECT nombre_escuela, correo_responsable, correo_institucional, estado_solicitud 
-       FROM solicitud_escuela 
-       WHERE id_solicitud = $1`,
+      `SELECT * FROM solicitud_escuela WHERE id_solicitud = $1`,
       [id]
     );
 
@@ -515,6 +518,13 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
     }
 
     const sol = solRes.rows[0];
+
+    if (sol.estado_solicitud === 'Rechazada') {
+      return res.status(400).json({
+        success: false,
+        message: 'Esta solicitud ya había sido rechazada previamente.',
+      });
+    }
 
     await db.query(
       `UPDATE solicitud_escuela 
@@ -535,6 +545,11 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
         nombreEscuela: sol.nombre_escuela,
         estado: 'Rechazada',
         motivoRechazo: motivo_rechazo.trim(),
+        solicitudData: {
+          ...sol,
+          id_solicitud: id,
+          admin_nombre: `${req.user.nombre} ${req.user.apellidos || ''}`.trim(),
+        },
       });
     }
 

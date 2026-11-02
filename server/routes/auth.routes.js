@@ -18,6 +18,14 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Validación de longitud máxima permitida por el estándar de cifrado bcrypt (72 caracteres)
+    if (typeof contrasena === 'string' && contrasena.length > 72) {
+      return res.status(400).json({
+        success: false,
+        message: 'La contraseña ingresada excede la longitud máxima permitida (72 caracteres).',
+      });
+    }
+
     const trimmedEmail = correo.trim().toLowerCase();
 
     // Buscar usuario en base de datos
@@ -149,10 +157,10 @@ router.put('/profile', authMiddleware, async (req, res) => {
         });
       }
 
-      if (newPassword.length < 6) {
+      if (newPassword.length < 6 || newPassword.length > 72) {
         return res.status(400).json({
           success: false,
-          message: 'La nueva contraseña debe tener al menos 6 caracteres.',
+          message: 'La nueva contraseña debe tener entre 6 y 72 caracteres.',
         });
       }
 

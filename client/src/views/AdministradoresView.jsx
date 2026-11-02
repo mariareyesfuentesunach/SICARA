@@ -611,7 +611,7 @@ export default function AdministradoresView() {
             )}
           </div>
 
-          <div className="pt-4 border-t border-app-border flex items-center justify-end gap-3">
+          <div className="sticky bottom-0 bg-white pt-4 pb-1 border-t border-app-border flex items-center justify-end gap-3 mt-4">
             <button
               type="button"
               onClick={() => setShowCreateModal(false)}
@@ -687,7 +687,7 @@ export default function AdministradoresView() {
               )}
             </div>
 
-            <div className="pt-4 border-t border-app-border flex items-center justify-end gap-3">
+            <div className="sticky bottom-0 bg-white pt-4 pb-1 border-t border-app-border flex items-center justify-end gap-3 mt-4">
               <button
                 type="button"
                 onClick={() => {

@@ -7,7 +7,6 @@ import {
   Lock,
   Eye,
   EyeOff,
-  ShieldCheck,
   AlertCircle,
   ArrowRight,
 } from 'lucide-react';
@@ -37,6 +36,11 @@ export default function LoginView() {
     const cleanEmail = correo.trim();
     if (!cleanEmail || !contrasena) {
       setErrorMessage('Por favor ingrese tanto el correo electrónico como la contraseña.');
+      return;
+    }
+
+    if (contrasena.length > 72) {
+      setErrorMessage('La contraseña no puede exceder los 72 caracteres permitidos.');
       return;
     }
 
@@ -135,6 +139,7 @@ export default function LoginView() {
                   onChange={(e) => setContrasena(e.target.value)}
                   placeholder="••••••••"
                   required
+                  maxLength={72}
                   autoComplete="new-password"
                   disabled={loading}
                   className="w-full pl-10 pr-10 py-2.5 text-sm rounded-subtle border border-app-border bg-white text-app-text placeholder:text-app-muted/60 focus:outline-none focus:border-vino-primary focus:ring-2 focus:ring-vino-primary/15 transition-all"
@@ -174,20 +179,6 @@ export default function LoginView() {
               </button>
             </div>
           </form>
-
-          {/* Caja Informativa de Seguridad */}
-          <div className="mt-6 pt-5 border-t border-app-border">
-            <div className="flex items-start gap-2.5 p-3 rounded-subtle bg-vino-soft/60 border border-vino-border/50 text-xs text-vino-dark">
-              <ShieldCheck className="w-4 h-4 text-vino-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Acceso seguro de Administrador</p>
-                <p className="text-[11px] text-app-muted mt-0.5">
-                  Cuenta inicial asignada:{' '}
-                  <span className="font-semibold text-vino-dark">Admin_Palasio@gmail.com</span>
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}

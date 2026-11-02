@@ -111,6 +111,10 @@ export const api = {
     const query = new URLSearchParams(params).toString();
     return request(`/usuarios?${query}`);
   },
+  getUsuariosPorEscuela: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/usuarios/por-escuela?${query}`);
+  },
   getUsuarioById: (id) => request(`/usuarios/${id}`),
   updateRolUsuario: (id, rol) =>
     request(`/usuarios/${id}/rol`, {

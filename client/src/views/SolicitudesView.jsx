@@ -112,7 +112,16 @@ export default function SolicitudesView({ onRefreshDashboard }) {
     try {
       const res = await api.aprobarSolicitud(solicitudToApprove.id_solicitud);
       if (res.success) {
-        showToast(res.message, 'success');
+        let msg = res.message;
+        if (res.emailStatus && !res.emailStatus.sent) {
+          msg += ` (Aviso: Notificación por correo no enviada: ${res.emailStatus.error})`;
+          showToast(msg, 'info');
+        } else if (res.emailStatus && res.emailStatus.sent) {
+          msg += ` (Correo enviado exitosamente con comprobante PDF adjunto)`;
+          showToast(msg, 'success');
+        } else {
+          showToast(msg, 'success');
+        }
         setSolicitudes((prev) =>
           prev.map((s) =>
             s.id_solicitud === solicitudToApprove.id_solicitud
@@ -162,7 +171,13 @@ export default function SolicitudesView({ onRefreshDashboard }) {
     try {
       const res = await api.rechazarSolicitud(solicitudToReject.id_solicitud, motivo.trim());
       if (res.success) {
-        showToast(res.message, 'warning');
+        let msg = res.message;
+        if (res.emailStatus && !res.emailStatus.sent) {
+          msg += ` (Aviso: Notificación por correo no enviada: ${res.emailStatus.error})`;
+        } else if (res.emailStatus && res.emailStatus.sent) {
+          msg += ` (Correo con motivo de rechazo enviado a la escuela)`;
+        }
+        showToast(msg, 'warning');
         setSolicitudes((prev) =>
           prev.map((s) =>
             s.id_solicitud === solicitudToReject.id_solicitud
@@ -272,7 +287,16 @@ export default function SolicitudesView({ onRefreshDashboard }) {
     try {
       const res = await api.createSolicitud(newFormData);
       if (res.success) {
-        showToast(res.message, 'success');
+        let msg = res.message;
+        if (res.emailStatus && !res.emailStatus.sent) {
+          msg += ` (Aviso: Notificación por correo no enviada: ${res.emailStatus.error})`;
+          showToast(msg, 'info');
+        } else if (res.emailStatus && res.emailStatus.sent) {
+          msg += ` (Correo enviado exitosamente con comprobante PDF adjunto)`;
+          showToast(msg, 'success');
+        } else {
+          showToast(msg, 'success');
+        }
         setShowCreateModal(false);
         setNewFormData({
           nombre_escuela: '',
