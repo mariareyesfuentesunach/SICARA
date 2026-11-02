@@ -12,6 +12,7 @@ import DashboardView from './views/DashboardView';
 import SolicitudesView from './views/SolicitudesView';
 import EscuelasView from './views/EscuelasView';
 import UsuariosView from './views/UsuariosView';
+import AdministradoresView from './views/AdministradoresView';
 import NotificacionesView from './views/NotificacionesView';
 import PerfilView from './views/PerfilView';
 
@@ -130,6 +131,8 @@ export default function App() {
 
           {currentView === 'usuarios' && <UsuariosView />}
 
+          {currentView === 'administradores' && <AdministradoresView />}
+
           {currentView === 'notificaciones' && (
             <NotificacionesView
               onNavigate={(view) => setCurrentView(view)}
@@ -155,4 +158,3 @@ export default function App() {
     </div>
   );
 }
-

@@ -10,6 +10,7 @@ const solicitudesRoutes = require('./routes/solicitudes.routes');
 const escuelasRoutes = require('./routes/escuelas.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const notificacionesRoutes = require('./routes/notificaciones.routes');
+const administradoresRoutes = require('./routes/administradores.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,6 +27,7 @@ app.use('/api/solicitudes', solicitudesRoutes);
 app.use('/api/escuelas', escuelasRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
+app.use('/api/administradores', administradoresRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -69,4 +71,3 @@ app.listen(PORT, () => {
   console.log(`📡 PostgreSQL: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
   console.log(`=======================================================`);
 });
-

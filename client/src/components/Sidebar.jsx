@@ -10,7 +10,17 @@ import {
   GraduationCap,
   X,
   ShieldCheck,
+  UserCheck,
 } from 'lucide-react';
+
+function AdminCombinedIcon({ className }) {
+  return (
+    <div className="relative flex items-center justify-center">
+      <Users className={className} />
+      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 absolute -bottom-1.5 -right-1.5 bg-vino-dark rounded-full p-0.5 shadow-xs" />
+    </div>
+  );
+}
 
 export default function Sidebar({
   currentView,
@@ -43,6 +53,11 @@ export default function Sidebar({
       id: 'usuarios',
       label: 'Usuarios',
       icon: Users,
+    },
+    {
+      id: 'administradores',
+      label: 'Administradores',
+      icon: AdminCombinedIcon,
     },
     {
       id: 'notificaciones',
@@ -97,7 +112,7 @@ export default function Sidebar({
           {/* Mobile close button */}
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="p-1 rounded-lg text-white/70 hover:text-white hover:bg-white/10 lg:hidden"
+            className="p-1 rounded-lg text-white/70 hover:text-white hover:bg-white/10 lg:hidden cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -124,7 +139,7 @@ export default function Sidebar({
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-subtle text-sm font-semibold transition-all group ${
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-subtle text-sm font-semibold transition-all group cursor-pointer ${
                   isActive
                     ? 'bg-white text-vino-dark shadow-md font-bold'
                     : 'text-white/80 hover:bg-white/10 hover:text-white'
@@ -155,7 +170,7 @@ export default function Sidebar({
         <div className="p-4 border-t border-white/10">
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-subtle text-sm font-semibold text-red-200 hover:text-white hover:bg-red-500/20 transition-all group"
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-subtle text-sm font-semibold text-red-200 hover:text-white hover:bg-red-500/20 transition-all group cursor-pointer"
           >
             <LogOut className="w-5 h-5 text-red-300 group-hover:text-red-100 transition-colors" />
             <span>Cerrar Sesión</span>
@@ -165,4 +180,3 @@ export default function Sidebar({
     </>
   );
 }
-

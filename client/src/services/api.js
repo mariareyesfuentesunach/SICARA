@@ -123,6 +123,24 @@ export const api = {
       body: JSON.stringify({ estado }),
     }),
 
+  // Administradores
+  getAdministradores: () => request('/administradores'),
+  createAdministrador: (data) =>
+    request('/administradores', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateAdministrador: (id, data) =>
+    request(`/administradores/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  updateEstadoAdministrador: (id, estado) =>
+    request(`/administradores/${id}/estado`, {
+      method: 'PUT',
+      body: JSON.stringify({ estado }),
+    }),
+
   // Notificaciones
   getNotificaciones: () => request('/notificaciones'),
   resolverAlerta: (id) =>
@@ -130,4 +148,3 @@ export const api = {
       method: 'PUT',
     }),
 };
-

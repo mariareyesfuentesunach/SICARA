@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import {
@@ -16,17 +16,26 @@ export default function LoginView() {
   const { login } = useAuth();
   const { showToast } = useToast();
 
-  const [correo, setCorreo] = useState('Admin_Palasio@gmail.com');
-  const [contrasena, setContrasena] = useState('Admin123');
+  // Los campos aparecen completamente vacíos sin autocompletado ni almacenamiento
+  const [correo, setCorreo] = useState('');
+  const [contrasena, setContrasena] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Limpiar campos explícitamente al montar el componente
+  useEffect(() => {
+    setCorreo('');
+    setContrasena('');
+    setErrorMessage('');
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
-    if (!correo.trim() || !contrasena) {
+    const cleanEmail = correo.trim();
+    if (!cleanEmail || !contrasena) {
       setErrorMessage('Por favor ingrese tanto el correo electrónico como la contraseña.');
       return;
     }
@@ -34,10 +43,14 @@ export default function LoginView() {
     setLoading(true);
 
     try {
-      await login(correo.trim(), contrasena);
+      await login(cleanEmail, contrasena);
       showToast('Bienvenido al panel del Administrador General', 'success');
+      // Limpiar estados de memoria tras éxito
+      setCorreo('');
+      setContrasena('');
     } catch (err) {
-      console.error('Error de login:', err);
+      // Limpiar contraseña de la memoria ante fallo de autenticación
+      setContrasena('');
       const msg = err.message || 'Error al iniciar sesión. Verifique sus credenciales.';
       setErrorMessage(msg);
       showToast(msg, 'error');
@@ -84,7 +97,7 @@ export default function LoginView() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
             {/* Campo Correo */}
             <div>
               <label className="block text-xs font-bold text-app-text mb-1.5 uppercase tracking-wider">
@@ -100,7 +113,7 @@ export default function LoginView() {
                   onChange={(e) => setCorreo(e.target.value)}
                   placeholder="ejemplo@correo.com"
                   required
-                  autoComplete="email"
+                  autoComplete="off"
                   disabled={loading}
                   className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-subtle border border-app-border bg-white text-app-text placeholder:text-app-muted/60 focus:outline-none focus:border-vino-primary focus:ring-2 focus:ring-vino-primary/15 transition-all"
                 />
@@ -122,14 +135,14 @@ export default function LoginView() {
                   onChange={(e) => setContrasena(e.target.value)}
                   placeholder="••••••••"
                   required
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   disabled={loading}
                   className="w-full pl-10 pr-10 py-2.5 text-sm rounded-subtle border border-app-border bg-white text-app-text placeholder:text-app-muted/60 focus:outline-none focus:border-vino-primary focus:ring-2 focus:ring-vino-primary/15 transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-app-muted hover:text-vino-primary transition-colors"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
                   title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -185,4 +198,3 @@ export default function LoginView() {
     </div>
   );
 }
-

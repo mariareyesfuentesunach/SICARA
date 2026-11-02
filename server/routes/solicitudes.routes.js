@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const { authMiddleware } = require('../middleware/auth');
+const { notificarEscuelaPorCorreo } = require('../utils/email');
 
 const router = express.Router();
 
@@ -20,17 +21,17 @@ router.get('/', authMiddleware, async (req, res) => {
 
     if (search) {
       conditions.push(`(
-        nombre_escuela ILIKE $${pIdx} OR 
-        cct ILIKE $${pIdx} OR 
-        municipio ILIKE $${pIdx} OR 
-        nombre_responsable ILIKE $${pIdx}
+        s.nombre_escuela ILIKE $${pIdx} OR 
+        s.cct ILIKE $${pIdx} OR 
+        s.municipio ILIKE $${pIdx} OR 
+        s.nombre_responsable ILIKE $${pIdx}
       )`);
       params.push(`%${search}%`);
       pIdx++;
     }
 
     if (estado && estado.toLowerCase() !== 'todas') {
-      conditions.push(`LOWER(estado_solicitud) = LOWER($${pIdx})`);
+      conditions.push(`LOWER(s.estado_solicitud) = LOWER($${pIdx})`);
       params.push(estado);
       pIdx++;
     }
@@ -38,33 +39,37 @@ router.get('/', authMiddleware, async (req, res) => {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Consulta de conteo
-    const countQuery = `SELECT count(*) FROM solicitud_escuela ${whereClause}`;
+    const countQuery = `SELECT count(*) FROM solicitud_escuela s ${whereClause}`;
     const countRes = await db.query(countQuery, params);
     const total = parseInt(countRes.rows[0].count, 10);
 
-    // Consulta paginada
+    // Consulta paginada con trazabilidad de resolución
     const dataQuery = `
       SELECT 
-        id_solicitud,
-        nombre_escuela,
-        cct,
-        nivel_educativo,
-        turno,
-        direccion,
-        municipio,
-        estado,
-        codigo_postal,
-        telefono,
-        correo_institucional,
-        nombre_responsable,
-        correo_responsable,
-        telefono_responsable,
-        fecha_solicitud,
-        estado_solicitud,
-        motivo_rechazo
-      FROM solicitud_escuela
+        s.id_solicitud,
+        s.nombre_escuela,
+        s.cct,
+        s.nivel_educativo,
+        s.turno,
+        s.direccion,
+        s.municipio,
+        s.estado,
+        s.codigo_postal,
+        s.telefono,
+        s.correo_institucional,
+        s.nombre_responsable,
+        s.correo_responsable,
+        s.telefono_responsable,
+        s.fecha_solicitud,
+        s.estado_solicitud,
+        s.motivo_rechazo,
+        s.fecha_resolucion,
+        s.id_usuario_resolucion,
+        CONCAT(u.nombre, ' ', COALESCE(u.apellidos, '')) as admin_resolucion_nombre
+      FROM solicitud_escuela s
+      LEFT JOIN usuario u ON s.id_usuario_resolucion = u.id_usuario
       ${whereClause}
-      ORDER BY fecha_solicitud DESC NULLS LAST
+      ORDER BY s.fecha_solicitud DESC NULLS LAST
       LIMIT $${pIdx} OFFSET $${pIdx + 1}
     `;
 
@@ -91,25 +96,29 @@ router.get('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
     const result = await db.query(
       `SELECT 
-        id_solicitud,
-        nombre_escuela,
-        cct,
-        nivel_educativo,
-        turno,
-        direccion,
-        municipio,
-        estado,
-        codigo_postal,
-        telefono,
-        correo_institucional,
-        nombre_responsable,
-        correo_responsable,
-        telefono_responsable,
-        fecha_solicitud,
-        estado_solicitud,
-        motivo_rechazo
-      FROM solicitud_escuela
-      WHERE id_solicitud = $1`,
+        s.id_solicitud,
+        s.nombre_escuela,
+        s.cct,
+        s.nivel_educativo,
+        s.turno,
+        s.direccion,
+        s.municipio,
+        s.estado,
+        s.codigo_postal,
+        s.telefono,
+        s.correo_institucional,
+        s.nombre_responsable,
+        s.correo_responsable,
+        s.telefono_responsable,
+        s.fecha_solicitud,
+        s.estado_solicitud,
+        s.motivo_rechazo,
+        s.fecha_resolucion,
+        s.id_usuario_resolucion,
+        CONCAT(u.nombre, ' ', COALESCE(u.apellidos, '')) as admin_resolucion_nombre
+      FROM solicitud_escuela s
+      LEFT JOIN usuario u ON s.id_usuario_resolucion = u.id_usuario
+      WHERE s.id_solicitud = $1`,
       [id]
     );
 
@@ -124,7 +133,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/solicitudes - Registrar nueva solicitud
+// POST /api/solicitudes - Registrar nueva solicitud con validaciones estrictas
 router.post('/', async (req, res) => {
   try {
     const {
@@ -144,12 +153,133 @@ router.post('/', async (req, res) => {
       contrasena_responsable,
     } = req.body;
 
-    if (!nombre_escuela || !cct || !nombre_responsable || !correo_responsable) {
+    // 1. Validar nombre de escuela
+    if (!nombre_escuela || !nombre_escuela.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Los campos Nombre de escuela, CCT, Nombre de responsable y Correo son obligatorios.',
+        field: 'nombre_escuela',
+        message: 'El nombre de la escuela es obligatorio y no puede estar vacío.',
       });
     }
+    if (nombre_escuela.trim().length > 150) {
+      return res.status(400).json({
+        success: false,
+        field: 'nombre_escuela',
+        message: 'El nombre de la escuela excede el límite máximo permitido de 150 caracteres.',
+      });
+    }
+
+    // 2. Validar CCT (Formato oficial SEP mexicano: 2 números, 3 letras, 4 números, 1 letra)
+    if (!cct || !cct.trim()) {
+      return res.status(400).json({
+        success: false,
+        field: 'cct',
+        message: 'La Clave de Centro de Trabajo (CCT) es obligatoria.',
+      });
+    }
+    const cleanCCT = cct.trim().toUpperCase();
+    const cctRegex = /^[0-9]{2}[A-Z]{3}[0-9]{4}[A-Z]$/;
+    if (!cctRegex.test(cleanCCT)) {
+      return res.status(400).json({
+        success: false,
+        field: 'cct',
+        message: 'Formato de CCT inválido. Debe contener exactamente 10 caracteres alfanuméricos con la estructura oficial (ej. 14DPR1234K).',
+      });
+    }
+
+    // Validar duplicado de CCT en solicitudes pendientes o en escuelas activas
+    const dupCctCheck = await db.query(
+      `SELECT cct FROM solicitud_escuela WHERE UPPER(cct) = $1 AND LOWER(estado_solicitud) = 'pendiente'`,
+      [cleanCCT]
+    );
+    if (dupCctCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        field: 'cct',
+        message: 'Ya existe una solicitud pendiente de revisión con esta misma clave CCT.',
+      });
+    }
+
+    // 3. Validar Teléfono (Exactamente 10 dígitos)
+    if (telefono && telefono.trim()) {
+      const cleanTel = telefono.trim().replace(/\D/g, '');
+      if (cleanTel.length !== 10) {
+        return res.status(400).json({
+          success: false,
+          field: 'telefono',
+          message: 'El teléfono institucional debe contener exactamente 10 dígitos numéricos.',
+        });
+      }
+    }
+
+    if (telefono_responsable && telefono_responsable.trim()) {
+      const cleanTelResp = telefono_responsable.trim().replace(/\D/g, '');
+      if (cleanTelResp.length !== 10) {
+        return res.status(400).json({
+          success: false,
+          field: 'telefono_responsable',
+          message: 'El teléfono del responsable debe contener exactamente 10 dígitos numéricos.',
+        });
+      }
+    }
+
+    // 4. Validar Código Postal (5 dígitos)
+    if (codigo_postal && codigo_postal.trim()) {
+      const cleanCP = codigo_postal.trim();
+      if (!/^\d{5}$/.test(cleanCP)) {
+        return res.status(400).json({
+          success: false,
+          field: 'codigo_postal',
+          message: 'El código postal debe contener exactamente 5 dígitos numéricos.',
+        });
+      }
+    }
+
+    // 5. Validar Correo Institucional
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (correo_institucional && correo_institucional.trim()) {
+      const cleanCorreoInst = correo_institucional.trim().toLowerCase();
+      if (!emailRegex.test(cleanCorreoInst)) {
+        return res.status(400).json({
+          success: false,
+          field: 'correo_institucional',
+          message: 'El correo institucional no tiene una estructura de correo electrónico válida.',
+        });
+      }
+    }
+
+    // 6. Validar Datos del Responsable
+    if (!nombre_responsable || !nombre_responsable.trim()) {
+      return res.status(400).json({
+        success: false,
+        field: 'nombre_responsable',
+        message: 'El nombre del directivo o responsable es obligatorio.',
+      });
+    }
+
+    if (!correo_responsable || !correo_responsable.trim()) {
+      return res.status(400).json({
+        success: false,
+        field: 'correo_responsable',
+        message: 'El correo electrónico del responsable es obligatorio.',
+      });
+    }
+
+    const cleanCorreoResp = correo_responsable.trim().toLowerCase();
+    if (!emailRegex.test(cleanCorreoResp)) {
+      return res.status(400).json({
+        success: false,
+        field: 'correo_responsable',
+        message: 'El correo electrónico del responsable no tiene un formato válido.',
+      });
+    }
+
+    // 7. Validar Nivel Educativo y Turno permitidos
+    const validNiveles = ['Preescolar', 'Primaria', 'Secundaria', 'Telesecundaria'];
+    const nivelFinal = validNiveles.includes(nivel_educativo) ? nivel_educativo : 'Primaria';
+
+    const validTurnos = ['Matutino', 'Vespertino', 'Completo'];
+    const turnoFinal = validTurnos.includes(turno) ? turno : 'Matutino';
 
     // Hashear contraseña del responsable
     const rawPass = contrasena_responsable && contrasena_responsable.trim().length >= 6
@@ -168,18 +298,18 @@ router.post('/', async (req, res) => {
       RETURNING id_solicitud, nombre_escuela, cct, estado_solicitud, fecha_solicitud`,
       [
         nombre_escuela.trim(),
-        cct.trim().toUpperCase(),
-        nivel_educativo || 'Primaria',
-        turno || 'Matutino',
-        direccion || '',
-        municipio || '',
-        estado || 'Jalisco',
-        codigo_postal || '',
-        telefono || '',
-        correo_institucional || '',
+        cleanCCT,
+        nivelFinal,
+        turnoFinal,
+        (direccion || '').trim(),
+        (municipio || '').trim(),
+        (estado || 'Jalisco').trim(),
+        (codigo_postal || '').trim(),
+        (telefono || '').trim(),
+        (correo_institucional || '').trim().toLowerCase(),
         nombre_responsable.trim(),
-        correo_responsable.trim().toLowerCase(),
-        telefono_responsable || '',
+        cleanCorreoResp,
+        (telefono_responsable || '').trim(),
         passHash,
       ]
     );
@@ -191,19 +321,20 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error en POST /api/solicitudes:', error);
-    return res.status(500).json({ success: false, message: 'Error al registrar la solicitud.' });
+    return res.status(500).json({ success: false, message: 'Error interno al registrar la solicitud.' });
   }
 });
 
-// PUT /api/solicitudes/:id/aprobar - Aprobar solicitud y persistir en escuelas y directivo
+// PUT /api/solicitudes/:id/aprobar - Aprobar solicitud (Disponible para cualquier Administrador General activo)
 router.put('/:id/aprobar', authMiddleware, async (req, res) => {
   const client = await db.pool.connect();
   try {
     const { id } = req.params;
+    const adminId = req.user.id_usuario;
 
     await client.query('BEGIN');
 
-    // 1. Obtener la solicitud
+    // 1. Obtener la solicitud bloqueando la fila
     const solRes = await client.query(
       `SELECT * FROM solicitud_escuela WHERE id_solicitud = $1 FOR UPDATE`,
       [id]
@@ -216,15 +347,26 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
 
     const sol = solRes.rows[0];
 
-    // 2. Marcar solicitud como Aprobada
+    if (sol.estado_solicitud === 'Aprobada') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        success: false,
+        message: 'Esta solicitud ya había sido aprobada previamente.',
+      });
+    }
+
+    // 2. Marcar solicitud como Aprobada registrando fecha y administrador responsable
     await client.query(
       `UPDATE solicitud_escuela 
-       SET estado_solicitud = 'Aprobada', motivo_rechazo = NULL 
-       WHERE id_solicitud = $1`,
-      [id]
+       SET estado_solicitud = 'Aprobada',
+           motivo_rechazo = NULL,
+           fecha_resolucion = NOW(),
+           id_usuario_resolucion = $1
+       WHERE id_solicitud = $2`,
+      [adminId, id]
     );
 
-    // 3. Crear o actualizar escuela en tabla `escuelas`
+    // 3. Crear o actualizar escuela en tabla `escuelas` respetando relaciones
     let id_escuela = null;
     const existingEscuela = await client.query(
       `SELECT id_escuela FROM escuelas WHERE UPPER(cct) = UPPER($1)`,
@@ -275,6 +417,12 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
       id_escuela = newEscuela.rows[0].id_escuela;
     }
 
+    // Vincular id_escuela en solicitud_escuela
+    await client.query(
+      `UPDATE solicitud_escuela SET id_escuela = $1 WHERE id_solicitud = $2`,
+      [id_escuela, id]
+    );
+
     // 4. Crear o asociar usuario Directivo si tiene correo_responsable
     if (sol.correo_responsable) {
       const userRes = await client.query(
@@ -285,7 +433,6 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
       const passHash = sol.contrasena_responsable || (await bcrypt.hash('Directivo2026!', 10));
 
       if (userRes.rows.length > 0) {
-        // Actualizar asociación a la escuela si no es Administrador
         const existingUser = userRes.rows[0];
         if (existingUser.rol !== 'Administrador') {
           await client.query(
@@ -296,7 +443,6 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
           );
         }
       } else {
-        // Crear nuevo usuario Directivo
         await client.query(
           `INSERT INTO usuario (
             id_escuela, nombre, apellidos, correo, contrasena, rol, estado, fecha_registro
@@ -314,12 +460,24 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
 
     await client.query('COMMIT');
 
+    // Notificación por correo a la escuela (real si está configurado SMTP)
+    const emailDest = sol.correo_responsable || sol.correo_institucional;
+    let emailStatus = null;
+    if (emailDest) {
+      emailStatus = await notificarEscuelaPorCorreo({
+        destinatario: emailDest,
+        nombreEscuela: sol.nombre_escuela,
+        estado: 'Aprobada',
+      });
+    }
+
     return res.json({
       success: true,
       message: `La solicitud de "${sol.nombre_escuela}" ha sido aprobada exitosamente y registrada en el catálogo de escuelas.`,
       id_solicitud: id,
       id_escuela,
       estado_solicitud: 'Aprobada',
+      emailStatus,
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -330,22 +488,25 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /api/solicitudes/:id/rechazar - Rechazar solicitud con motivo justificado
+// PUT /api/solicitudes/:id/rechazar - Rechazar solicitud con motivo justificado (Cualquier Administrador General)
 router.put('/:id/rechazar', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { motivo_rechazo } = req.body;
+    const adminId = req.user.id_usuario;
 
     if (!motivo_rechazo || !motivo_rechazo.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Es obligatorio proporcionar un motivo claro para rechazar la solicitud.',
+        message: 'Es obligatorio proporcionar un motivo claro y justificado para rechazar la solicitud.',
       });
     }
 
     // Verificar existencia
     const solRes = await db.query(
-      `SELECT nombre_escuela FROM solicitud_escuela WHERE id_solicitud = $1`,
+      `SELECT nombre_escuela, correo_responsable, correo_institucional, estado_solicitud 
+       FROM solicitud_escuela 
+       WHERE id_solicitud = $1`,
       [id]
     );
 
@@ -353,21 +514,37 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Solicitud no encontrada.' });
     }
 
-    const nombre_escuela = solRes.rows[0].nombre_escuela;
+    const sol = solRes.rows[0];
 
     await db.query(
       `UPDATE solicitud_escuela 
-       SET estado_solicitud = 'Rechazada', motivo_rechazo = $1 
-       WHERE id_solicitud = $2`,
-      [motivo_rechazo.trim(), id]
+       SET estado_solicitud = 'Rechazada', 
+           motivo_rechazo = $1,
+           fecha_resolucion = NOW(),
+           id_usuario_resolucion = $2
+       WHERE id_solicitud = $3`,
+      [motivo_rechazo.trim(), adminId, id]
     );
+
+    // Notificación por correo a la escuela (real si está configurado SMTP)
+    const emailDest = sol.correo_responsable || sol.correo_institucional;
+    let emailStatus = null;
+    if (emailDest) {
+      emailStatus = await notificarEscuelaPorCorreo({
+        destinatario: emailDest,
+        nombreEscuela: sol.nombre_escuela,
+        estado: 'Rechazada',
+        motivoRechazo: motivo_rechazo.trim(),
+      });
+    }
 
     return res.json({
       success: true,
-      message: `La solicitud de "${nombre_escuela}" ha sido rechazada.`,
+      message: `La solicitud de "${sol.nombre_escuela}" ha sido rechazada debidamente.`,
       id_solicitud: id,
       estado_solicitud: 'Rechazada',
       motivo_rechazo: motivo_rechazo.trim(),
+      emailStatus,
     });
   } catch (error) {
     console.error('Error al rechazar solicitud:', error);
@@ -376,4 +553,3 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
-

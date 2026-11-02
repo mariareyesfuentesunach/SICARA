@@ -37,18 +37,21 @@ router.get('/', authMiddleware, async (req, res) => {
       ORDER BY a.fecha_generacion DESC
     `);
 
-    // 3. Solicitudes resueltas recientemente
+    // 3. Solicitudes resueltas recientemente con trazabilidad
     const resueltasRes = await db.query(`
       SELECT 
-        id_solicitud,
-        nombre_escuela,
-        cct,
-        estado_solicitud,
-        fecha_solicitud
-      FROM solicitud_escuela
-      WHERE LOWER(estado_solicitud) IN ('aprobada', 'rechazada')
-      ORDER BY fecha_solicitud DESC
-      LIMIT 5
+        s.id_solicitud,
+        s.nombre_escuela,
+        s.cct,
+        s.estado_solicitud,
+        s.motivo_rechazo,
+        COALESCE(s.fecha_resolucion, s.fecha_solicitud) as fecha_evento,
+        CONCAT(u.nombre, ' ', COALESCE(u.apellidos, '')) as admin_nombre
+      FROM solicitud_escuela s
+      LEFT JOIN usuario u ON s.id_usuario_resolucion = u.id_usuario
+      WHERE LOWER(s.estado_solicitud) IN ('aprobada', 'rechazada')
+      ORDER BY COALESCE(s.fecha_resolucion, s.fecha_solicitud) DESC
+      LIMIT 10
     `);
 
     // Construir lista unificada de notificaciones
@@ -85,14 +88,22 @@ router.get('/', authMiddleware, async (req, res) => {
     });
 
     resueltasRes.rows.forEach((r) => {
+      const adminTxt = r.admin_nombre && r.admin_nombre.trim() ? ` por ${r.admin_nombre.trim()}` : '';
+      let desc = '';
+      if (r.estado_solicitud === 'Aprobada') {
+        desc = `Solicitud aprobada e incorporada al catálogo oficial de escuelas${adminTxt}.`;
+      } else {
+        desc = `Solicitud rechazada${adminTxt}. Motivo: ${r.motivo_rechazo || 'No especificado'}.`;
+      }
+
       notificaciones.push({
         id: `res-${r.id_solicitud}`,
         referencia_id: r.id_solicitud,
         tipo: 'solicitud_resuelta',
         categoria: 'Historial',
         titulo: `Solicitud ${r.estado_solicitud}: ${r.nombre_escuela}`,
-        descripcion: `La solicitud de registro para ${r.nombre_escuela} fue catalogada como ${r.estado_solicitud}.`,
-        fecha: r.fecha_solicitud,
+        descripcion: desc,
+        fecha: r.fecha_evento,
         prioridad: 'baja',
         estado: r.estado_solicitud,
         enlace: '/solicitudes',
@@ -136,4 +147,3 @@ router.put('/alerta/:id/resolver', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
-

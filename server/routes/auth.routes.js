@@ -6,7 +6,7 @@ const { authMiddleware, JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /api/auth/login
+// POST /api/auth/login - Inicio de sesión para Administrador Principal y Adicionales
 router.post('/login', async (req, res) => {
   try {
     const { correo, contrasena } = req.body;
@@ -22,7 +22,7 @@ router.post('/login', async (req, res) => {
 
     // Buscar usuario en base de datos
     const result = await db.query(
-      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, contrasena, rol, estado, fecha_registro
+      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, contrasena, rol, estado, es_principal, fecha_registro
        FROM usuario
        WHERE LOWER(correo) = $1`,
       [trimmedEmail]
@@ -41,15 +41,15 @@ router.post('/login', async (req, res) => {
     if (user.estado && user.estado.toLowerCase() !== 'activo') {
       return res.status(403).json({
         success: false,
-        message: 'Su cuenta se encuentra inactiva. Comuníquese con soporte.',
+        message: 'Su cuenta se encuentra inactiva. Comuníquese con el Administrador Principal.',
       });
     }
 
-    // Regla de etapa 1: Acceso exclusivo a la cuenta del Administrador General
+    // Acceso restringido al Administrador General (Principal o Adicional)
     if (user.rol !== 'Administrador') {
       return res.status(403).json({
         success: false,
-        message: 'Por el momento, el acceso está restringido únicamente al Administrador General.',
+        message: 'El acceso a este módulo está restringido a cuentas con rol de Administrador General.',
       });
     }
 
@@ -67,6 +67,7 @@ router.post('/login', async (req, res) => {
       id_usuario: user.id_usuario,
       correo: user.correo,
       rol: user.rol,
+      es_principal: Boolean(user.es_principal),
       nombre: user.nombre,
       apellidos: user.apellidos,
     };
@@ -84,6 +85,7 @@ router.post('/login', async (req, res) => {
         correo: user.correo,
         rol: user.rol,
         estado: user.estado,
+        es_principal: Boolean(user.es_principal),
         fecha_registro: user.fecha_registro,
       },
     });
@@ -100,7 +102,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, rol, estado, fecha_registro
+      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, rol, estado, es_principal, fecha_registro
        FROM usuario
        WHERE id_usuario = $1`,
       [req.user.id_usuario]
@@ -181,7 +183,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
     }
 
     const updatedRes = await db.query(
-      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, rol, estado, fecha_registro
+      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, rol, estado, es_principal, fecha_registro
        FROM usuario
        WHERE id_usuario = $1`,
       [req.user.id_usuario]
@@ -207,4 +209,3 @@ router.post('/logout', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
-
