@@ -1,7 +1,15 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, subtitle, children, maxWidth = 'max-w-2xl' }) {
+export default function Modal({
+  isOpen,
+  onClose,
+  title,
+  subtitle,
+  children,
+  maxWidth = 'max-w-2xl',
+  footer = null,
+}) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) {
@@ -21,41 +29,51 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, maxW
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-6">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-vino-dark/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-6 animate-fade-in">
+      {/* Click outside backdrop */}
       <div 
-        className="fixed inset-0 bg-vino-dark/40 backdrop-blur-xs transition-opacity animate-fade-in"
+        className="fixed inset-0 -z-10"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Modal Dialog Container */}
       <div 
-        className={`relative z-10 flex flex-col max-h-[90vh] rounded-card bg-white text-left shadow-elevated transition-all w-full ${maxWidth} border border-app-border animate-fade-in my-auto overflow-hidden`}
+        className={`relative flex flex-col w-full ${maxWidth} max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3.5rem)] rounded-card bg-white text-left shadow-elevated border border-app-border overflow-hidden my-auto`}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
-        {/* Header (Fijo en la parte superior) */}
-        <div className="flex shrink-0 items-center justify-between border-b border-app-border px-6 py-4 bg-gradient-to-r from-vino-soft/50 to-white">
-          <div className="pr-4">
-            <h3 className="text-base sm:text-lg font-bold text-vino-dark leading-snug">
+        {/* Header - Fixed at the top */}
+        <div className="shrink-0 flex items-center justify-between border-b border-app-border px-5 sm:px-6 py-3.5 sm:py-4 bg-gradient-to-r from-vino-soft/50 via-vino-soft/20 to-white">
+          <div className="pr-3 min-w-0">
+            <h3 className="text-base sm:text-lg font-bold text-vino-dark leading-snug truncate">
               {title}
             </h3>
             {subtitle && (
-              <p className="text-xs text-app-muted mt-0.5">{subtitle}</p>
+              <p className="text-xs text-app-muted mt-0.5 line-clamp-1">{subtitle}</p>
             )}
           </div>
           <button
             onClick={onClose}
             className="shrink-0 rounded-subtle p-1.5 text-app-muted hover:bg-vino-soft hover:text-vino-primary transition-colors cursor-pointer"
-            title="Cerrar"
+            title="Cerrar ventana"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body (Con scroll vertical suave) */}
-        <div className="px-6 py-5 overflow-y-auto flex-1 overscroll-contain">
+        {/* Body - Scrollable content with min-h-0 */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-4 sm:py-5 overscroll-contain">
           {children}
         </div>
+
+        {/* Footer opcional - Fijo en la base del modal */}
+        {footer && (
+          <div className="shrink-0 border-t border-app-border px-5 sm:px-6 py-3.5 bg-gray-50/90 flex items-center justify-end gap-3">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

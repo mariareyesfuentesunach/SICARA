@@ -146,7 +146,7 @@ export default function Navbar({
                       className="p-3.5 hover:bg-vino-soft/40 cursor-pointer transition-colors"
                     >
                       <div className="flex items-start gap-2.5">
-                        {n.tipo.includes('solicitud') ? (
+                        {(n.tipo ? n.tipo.includes('solicitud') : true) ? (
                           <div className="p-1.5 rounded-full bg-status-warning-bg text-status-warning shrink-0 mt-0.5">
                             <AlertTriangle className="w-3.5 h-3.5" />
                           </div>

@@ -145,8 +145,20 @@ export const api = {
       body: JSON.stringify({ estado }),
     }),
 
-  // Notificaciones
+  // Notificaciones de Solicitudes de Escuelas
   getNotificaciones: () => request('/notificaciones'),
+  marcarNotificacionLeida: (id) =>
+    request(`/notificaciones/${id}/leida`, {
+      method: 'PUT',
+    }),
+  marcarNotificacionPendiente: (id) =>
+    request(`/notificaciones/${id}/pendiente`, {
+      method: 'PUT',
+    }),
+  marcarTodasNotificacionesLeidas: () =>
+    request('/notificaciones/marcar-todas-leidas', {
+      method: 'PUT',
+    }),
   resolverAlerta: (id) =>
     request(`/notificaciones/alerta/${id}/resolver`, {
       method: 'PUT',

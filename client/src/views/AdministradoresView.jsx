@@ -413,10 +413,7 @@ export default function AdministradoresView() {
 
                       {/* Estado */}
                       <td className="py-3.5 px-4">
-                        <Badge
-                          type={adm.estado?.toLowerCase() === 'activo' ? 'success' : 'error'}
-                          text={adm.estado || 'Activo'}
-                        />
+                        <Badge status={adm.estado || 'Activo'} />
                       </td>
 
                       {/* Fecha de registro */}
@@ -473,52 +470,75 @@ export default function AdministradoresView() {
         </div>
       </div>
 
-      {/* MODAL: Crear Administrador Adicional */}
+      {/* MODAL: Crear Administrador Adicional (Tamaño y Botones Corregidos) */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title="Crear Nuevo Administrador General"
         subtitle="El Administrador Principal asignará las credenciales iniciales para esta cuenta adicional"
-        maxWidth="max-w-lg"
+        maxWidth="max-w-xl"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(false)}
+              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="form-crear-admin"
+              disabled={actionLoading}
+              className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {actionLoading ? 'Registrando...' : 'Crear Administrador'}
+            </button>
+          </>
+        }
       >
-        <form onSubmit={handleCreateSubmit} autoComplete="off" className="space-y-4 text-xs">
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Nombre <span className="text-status-error">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                <User className="w-4 h-4" />
+        <form id="form-crear-admin" onSubmit={handleCreateSubmit} autoComplete="off" className="space-y-3.5 text-xs">
+          {/* Fila en 2 columnas: Nombre y Apellidos */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Nombre <span className="text-status-error">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                  <User className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={createData.nombre}
+                  onChange={(e) => setCreateData({ ...createData, nombre: e.target.value })}
+                  placeholder="Ej. Rodrigo"
+                  className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
+                    formErrors.nombre ? 'border-status-error' : 'border-app-border'
+                  } focus:outline-none focus:border-vino-primary text-xs`}
+                />
               </div>
+              {formErrors.nombre && (
+                <p className="text-[11px] text-status-error mt-1">{formErrors.nombre}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Apellidos
+              </label>
               <input
                 type="text"
-                required
-                value={createData.nombre}
-                onChange={(e) => setCreateData({ ...createData, nombre: e.target.value })}
-                placeholder="Ej. Rodrigo"
-                className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
-                  formErrors.nombre ? 'border-status-error' : 'border-app-border'
-                } focus:outline-none focus:border-vino-primary text-xs`}
+                value={createData.apellidos}
+                onChange={(e) => setCreateData({ ...createData, apellidos: e.target.value })}
+                placeholder="Ej. González Méndez"
+                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
               />
             </div>
-            {formErrors.nombre && (
-              <p className="text-[11px] text-status-error mt-1">{formErrors.nombre}</p>
-            )}
           </div>
 
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Apellidos
-            </label>
-            <input
-              type="text"
-              value={createData.apellidos}
-              onChange={(e) => setCreateData({ ...createData, apellidos: e.target.value })}
-              placeholder="Ej. González Méndez"
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-            />
-          </div>
-
+          {/* Correo Electrónico */}
           <div>
             <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
               Correo Electrónico <span className="text-status-error">*</span>
@@ -544,88 +564,75 @@ export default function AdministradoresView() {
             )}
           </div>
 
+          {/* Banner Informativo */}
           <div className="p-3 rounded-subtle bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1">
             <div className="font-bold flex items-center gap-1.5">
               <KeyRound className="w-3.5 h-3.5 text-amber-700" />
               <span>Asignación de Credenciales Iniciales:</span>
             </div>
-            <p>
+            <p className="leading-relaxed">
               Proporcione una contraseña segura inicial y comuníquesela al nuevo administrador. Las contraseñas quedan almacenadas en PostgreSQL con cifrado unidireccional bcrypt.
             </p>
           </div>
 
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Contraseña Inicial <span className="text-status-error">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                <Lock className="w-4 h-4" />
+          {/* Fila en 2 columnas: Contraseña Inicial y Confirmar Contraseña */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Contraseña Inicial <span className="text-status-error">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  type={showCreatePass ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={createData.contrasena}
+                  onChange={(e) => setCreateData({ ...createData, contrasena: e.target.value })}
+                  placeholder="Mínimo 6 caracteres"
+                  className={`w-full pl-9 pr-9 py-2 rounded-subtle border ${
+                    formErrors.contrasena ? 'border-status-error' : 'border-app-border'
+                  } focus:outline-none focus:border-vino-primary text-xs`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCreatePass(!showCreatePass)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-app-muted hover:text-vino-primary cursor-pointer"
+                >
+                  {showCreatePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
-              <input
-                type={showCreatePass ? 'text' : 'password'}
-                required
-                autoComplete="new-password"
-                value={createData.contrasena}
-                onChange={(e) => setCreateData({ ...createData, contrasena: e.target.value })}
-                placeholder="Mínimo 6 caracteres"
-                className={`w-full pl-9 pr-9 py-2 rounded-subtle border ${
-                  formErrors.contrasena ? 'border-status-error' : 'border-app-border'
-                } focus:outline-none focus:border-vino-primary text-xs`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowCreatePass(!showCreatePass)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-app-muted hover:text-vino-primary cursor-pointer"
-              >
-                {showCreatePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+              {formErrors.contrasena && (
+                <p className="text-[11px] text-status-error mt-1">{formErrors.contrasena}</p>
+              )}
             </div>
-            {formErrors.contrasena && (
-              <p className="text-[11px] text-status-error mt-1">{formErrors.contrasena}</p>
-            )}
-          </div>
 
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Confirmar Contraseña <span className="text-status-error">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                <Lock className="w-4 h-4" />
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Confirmar Contraseña <span className="text-status-error">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  type={showCreatePass ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={createData.confirmar_contrasena}
+                  onChange={(e) => setCreateData({ ...createData, confirmar_contrasena: e.target.value })}
+                  placeholder="Repita la contraseña"
+                  className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
+                    formErrors.confirmar_contrasena ? 'border-status-error' : 'border-app-border'
+                  } focus:outline-none focus:border-vino-primary text-xs`}
+                />
               </div>
-              <input
-                type={showCreatePass ? 'text' : 'password'}
-                required
-                autoComplete="new-password"
-                value={createData.confirmar_contrasena}
-                onChange={(e) => setCreateData({ ...createData, confirmar_contrasena: e.target.value })}
-                placeholder="Repita la contraseña inicial"
-                className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
-                  formErrors.confirmar_contrasena ? 'border-status-error' : 'border-app-border'
-                } focus:outline-none focus:border-vino-primary text-xs`}
-              />
+              {formErrors.confirmar_contrasena && (
+                <p className="text-[11px] text-status-error mt-1">{formErrors.confirmar_contrasena}</p>
+              )}
             </div>
-            {formErrors.confirmar_contrasena && (
-              <p className="text-[11px] text-status-error mt-1">{formErrors.confirmar_contrasena}</p>
-            )}
-          </div>
-
-          <div className="sticky bottom-0 bg-white pt-4 pb-1 border-t border-app-border flex items-center justify-end gap-3 mt-4">
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(false)}
-              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={actionLoading}
-              className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {actionLoading ? 'Registrando...' : 'Crear Administrador'}
-            </button>
           </div>
         </form>
       </Modal>
@@ -640,35 +647,59 @@ export default function AdministradoresView() {
           }}
           title="Modificar Datos de Administrador"
           subtitle={`Actualizar información de ${adminToEdit.nombre}`}
-          maxWidth="max-w-md"
+          maxWidth="max-w-lg"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setAdminToEdit(null);
+                }}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="form-editar-admin"
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm disabled:opacity-50 cursor-pointer transition-all"
+              >
+                {actionLoading ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
+            </>
+          }
         >
-          <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Nombre <span className="text-status-error">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={editData.nombre}
-                onChange={(e) => setEditData({ ...editData, nombre: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-              {editErrors.nombre && (
-                <p className="text-[11px] text-status-error mt-1">{editErrors.nombre}</p>
-              )}
-            </div>
+          <form id="form-editar-admin" onSubmit={handleEditSubmit} className="space-y-3.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Nombre <span className="text-status-error">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editData.nombre}
+                  onChange={(e) => setEditData({ ...editData, nombre: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+                {editErrors.nombre && (
+                  <p className="text-[11px] text-status-error mt-1">{editErrors.nombre}</p>
+                )}
+              </div>
 
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Apellidos
-              </label>
-              <input
-                type="text"
-                value={editData.apellidos}
-                onChange={(e) => setEditData({ ...editData, apellidos: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Apellidos
+                </label>
+                <input
+                  type="text"
+                  value={editData.apellidos}
+                  onChange={(e) => setEditData({ ...editData, apellidos: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
             </div>
 
             <div>
@@ -685,26 +716,6 @@ export default function AdministradoresView() {
               {editErrors.correo && (
                 <p className="text-[11px] text-status-error mt-1">{editErrors.correo}</p>
               )}
-            </div>
-
-            <div className="sticky bottom-0 bg-white pt-4 pb-1 border-t border-app-border flex items-center justify-end gap-3 mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowEditModal(false);
-                  setAdminToEdit(null);
-                }}
-                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={actionLoading}
-                className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm disabled:opacity-50 cursor-pointer"
-              >
-                {actionLoading ? 'Guardando...' : 'Guardar Cambios'}
-              </button>
             </div>
           </form>
         </Modal>
@@ -736,4 +747,3 @@ export default function AdministradoresView() {
     </div>
   );
 }
-

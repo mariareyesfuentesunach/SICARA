@@ -537,6 +537,36 @@ export default function SolicitudesView({ onRefreshDashboard }) {
           title={`Detalle de Solicitud: ${selectedSolicitud.nombre_escuela}`}
           subtitle={`Folio ID: ${selectedSolicitud.id_solicitud}`}
           maxWidth="max-w-2xl"
+          footer={
+            (selectedSolicitud.estado_solicitud || '').toLowerCase() === 'pendiente' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleOpenReject(selectedSolicitud)}
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-subtle bg-status-error-bg hover:bg-red-200 text-status-error text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Rechazar Solicitud
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenApprove(selectedSolicitud)}
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-subtle bg-status-success hover:bg-green-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Aprobar Solicitud
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Cerrar
+              </button>
+            )
+          }
         >
           <div className="space-y-5 text-sm">
             {/* Estado y Acciones Rápidas */}
@@ -654,28 +684,7 @@ export default function SolicitudesView({ onRefreshDashboard }) {
               </div>
             </div>
 
-            {/* Botones de acción dentro del modal si está pendiente */}
-            {(selectedSolicitud.estado_solicitud || '').toLowerCase() === 'pendiente' && (
-              <div className="pt-4 border-t border-app-border flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleOpenReject(selectedSolicitud)}
-                  disabled={actionLoading}
-                  className="px-4 py-2 rounded-subtle bg-status-error-bg hover:bg-red-200 text-status-error text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  Rechazar Solicitud
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenApprove(selectedSolicitud)}
-                  disabled={actionLoading}
-                  className="px-4 py-2 rounded-subtle bg-status-success hover:bg-green-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  Aprobar Solicitud
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
         </Modal>
       )}
 
@@ -714,15 +723,34 @@ export default function SolicitudesView({ onRefreshDashboard }) {
         reasonPlaceholder="Ej. Clave CCT no coincide con el catálogo oficial o la documentación comunitaria está incompleta..."
       />
 
-      {/* Modal para Crear Nueva Solicitud con Validaciones Robustas */}
+      {/* Modal para Crear Nueva Solicitud con Validaciones Robustas (Dimensiones Optimizadas y Botones Fijos) */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title="Registrar Nueva Solicitud de Escuela"
         subtitle="Permite dar de alta una nueva solicitud rural que se validará y guardará directamente en PostgreSQL"
-        maxWidth="max-w-2xl"
+        maxWidth="max-w-3xl"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(false)}
+              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="form-registrar-solicitud"
+              disabled={actionLoading}
+              className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              {actionLoading ? 'Registrando...' : 'Registrar Solicitud'}
+            </button>
+          </>
+        }
       >
-        <form onSubmit={handleCreateSolicitud} noValidate className="space-y-4 text-xs">
+        <form id="form-registrar-solicitud" onSubmit={handleCreateSolicitud} noValidate className="space-y-4 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Nombre Escuela */}
             <div className="sm:col-span-2">
@@ -978,22 +1006,6 @@ export default function SolicitudesView({ onRefreshDashboard }) {
             </div>
           </div>
 
-          <div className="pt-4 border-t border-app-border flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(false)}
-              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={actionLoading}
-              className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm disabled:opacity-50 cursor-pointer"
-            >
-              {actionLoading ? 'Registrando...' : 'Registrar Solicitud'}
-            </button>
-          </div>
         </form>
       </Modal>
     </div>

@@ -43,8 +43,8 @@ export default function App() {
       }
 
       if (notifRes && notifRes.success) {
-        setUnreadCount(notifRes.conteoNoLeidas || 0);
-        setNotificationsList(notifRes.notificaciones || []);
+        setUnreadCount(notifRes.totalPendientes ?? notifRes.conteoNoLeidas ?? 0);
+        setNotificationsList(notifRes.pendientes || notifRes.notificaciones || []);
       }
     } catch (err) {
       console.warn('Error sincronizando contadores:', err);
