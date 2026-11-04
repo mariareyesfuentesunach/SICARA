@@ -355,13 +355,16 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
       });
     }
 
-    // 2. Marcar solicitud como Aprobada registrando fecha y administrador responsable
+    // 2. Marcar solicitud como Aprobada registrando fecha y administrador responsable,
+    // y marcar automáticamente su notificación como LEÍDA trasladándola a la bandeja de leídas
     await client.query(
       `UPDATE solicitud_escuela 
        SET estado_solicitud = 'Aprobada',
            motivo_rechazo = NULL,
            fecha_resolucion = NOW(),
-           id_usuario_resolucion = $1
+           id_usuario_resolucion = $1,
+           notificacion_leida = true,
+           fecha_leida = COALESCE(fecha_leida, NOW())
        WHERE id_solicitud = $2`,
       [adminId, id]
     );
@@ -526,12 +529,15 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
       });
     }
 
+    // Al rechazar la solicitud, actualizar estado y marcar automáticamente su notificación como LEÍDA trasladándola a la bandeja de leídas
     await db.query(
       `UPDATE solicitud_escuela 
        SET estado_solicitud = 'Rechazada', 
            motivo_rechazo = $1,
            fecha_resolucion = NOW(),
-           id_usuario_resolucion = $2
+           id_usuario_resolucion = $2,
+           notificacion_leida = true,
+           fecha_leida = COALESCE(fecha_leida, NOW())
        WHERE id_solicitud = $3`,
       [motivo_rechazo.trim(), adminId, id]
     );

@@ -25,7 +25,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-export default function SolicitudesView({ onRefreshDashboard }) {
+export default function SolicitudesView({ initialFilter = 'todas', onRefreshDashboard }) {
   const { showToast } = useToast();
 
   const [solicitudes, setSolicitudes] = useState([]);
@@ -35,9 +35,17 @@ export default function SolicitudesView({ onRefreshDashboard }) {
   const [limit] = useState(8);
 
   const [search, setSearch] = useState('');
-  const [estadoFilter, setEstadoFilter] = useState('todas');
+  const [estadoFilter, setEstadoFilter] = useState(initialFilter);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Sincronizar estado del filtro cuando se navega desde el Dashboard
+  useEffect(() => {
+    if (initialFilter) {
+      setEstadoFilter(initialFilter);
+      setPage(1);
+    }
+  }, [initialFilter]);
 
   // Modales
   const [selectedSolicitud, setSelectedSolicitud] = useState(null);

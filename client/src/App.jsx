@@ -21,8 +21,17 @@ export default function App() {
   const { showToast } = useToast();
 
   const [currentView, setCurrentView] = useState('dashboard');
+  const [solicitudesInitialFilter, setSolicitudesInitialFilter] = useState('todas');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Manejador centralizado de navegación con soporte para filtros de vistas hijas
+  const handleNavigate = (view, options = {}) => {
+    if (view === 'solicitudes' && options.filter !== undefined) {
+      setSolicitudesInitialFilter(options.filter);
+    }
+    setCurrentView(view);
+  };
 
   // Contadores globales
   const [pendingCount, setPendingCount] = useState(0);
@@ -113,18 +122,21 @@ export default function App() {
           unreadCount={unreadCount}
           notifications={notificationsList}
           onOpenMobileMenu={() => setIsMobileOpen(true)}
-          onNavigate={(view) => setCurrentView(view)}
+          onNavigate={(view, opts) => handleNavigate(view, opts)}
           onLogout={() => setShowLogoutConfirm(true)}
         />
 
         {/* Contenido Principal de las Vistas */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in">
           {currentView === 'dashboard' && (
-            <DashboardView onNavigate={(view) => setCurrentView(view)} />
+            <DashboardView onNavigate={(view, opts) => handleNavigate(view, opts)} />
           )}
 
           {currentView === 'solicitudes' && (
-            <SolicitudesView onRefreshDashboard={fetchGlobalCounters} />
+            <SolicitudesView
+              initialFilter={solicitudesInitialFilter}
+              onRefreshDashboard={fetchGlobalCounters}
+            />
           )}
 
           {currentView === 'escuelas' && <EscuelasView />}
@@ -135,7 +147,7 @@ export default function App() {
 
           {currentView === 'notificaciones' && (
             <NotificacionesView
-              onNavigate={(view) => setCurrentView(view)}
+              onNavigate={(view, opts) => handleNavigate(view, opts)}
               onRefreshNotif={fetchGlobalCounters}
             />
           )}
