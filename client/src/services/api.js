@@ -50,7 +50,7 @@ async function request(endpoint, options = {}) {
 }
 
 export const api = {
-  // Auth
+  // Autenticación
   login: (correo, contrasena) =>
     request('/auth/login', {
       method: 'POST',
@@ -63,9 +63,11 @@ export const api = {
       body: JSON.stringify(profileData),
     }),
   logout: () =>
-    request('/auth/logout', { method: 'POST' }).finally(() => setToken(null)),
+    request('/auth/logout', {
+      method: 'POST',
+    }),
 
-  // Dashboard
+  // Dashboard Administrador General
   getDashboardStats: () => request('/dashboard/stats'),
 
   // Solicitudes
@@ -81,32 +83,32 @@ export const api = {
     }),
   aprobarSolicitud: (id) =>
     request(`/solicitudes/${id}/aprobar`, {
-      method: 'PUT',
+      method: 'POST',
     }),
   rechazarSolicitud: (id, motivo_rechazo) =>
     request(`/solicitudes/${id}/rechazar`, {
-      method: 'PUT',
+      method: 'POST',
       body: JSON.stringify({ motivo_rechazo }),
     }),
 
-  // Escuelas
+  // Escuelas (Admin General)
   getEscuelas: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return request(`/escuelas?${query}`);
   },
   getEscuelaById: (id) => request(`/escuelas/${id}`),
-  updateEstadoEscuela: (id, estado_escuela) =>
-    request(`/escuelas/${id}/estado`, {
-      method: 'PUT',
-      body: JSON.stringify({ estado_escuela }),
-    }),
   updateEscuela: (id, data) =>
     request(`/escuelas/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+  updateEstadoEscuela: (id, estado_escuela) =>
+    request(`/escuelas/${id}/estado`, {
+      method: 'PUT',
+      body: JSON.stringify({ estado_escuela }),
+    }),
 
-  // Usuarios
+  // Usuarios (Admin General)
   getUsuarios: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return request(`/usuarios?${query}`);
@@ -162,5 +164,133 @@ export const api = {
   resolverAlerta: (id) =>
     request(`/notificaciones/alerta/${id}/resolver`, {
       method: 'PUT',
+    }),
+
+  // ==========================================
+  // APIS DEL MÓDULO DEL DIRECTIVO
+  // ==========================================
+  getDirectivoDashboard: () => request('/directivo/dashboard'),
+
+  // Alumnos
+  getDirectivoAlumnos: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/directivo/alumnos?${query}`);
+  },
+  createDirectivoAlumno: (data) =>
+    request('/directivo/alumnos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateDirectivoAlumno: (id, data) =>
+    request(`/directivo/alumnos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getDirectivoAlumnoHistorial: (id) => request(`/directivo/alumnos/${id}/historial`),
+
+  // Docentes
+  getDirectivoDocentes: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/directivo/docentes?${query}`);
+  },
+  createDirectivoDocente: (data) =>
+    request('/directivo/docentes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateDirectivoDocente: (id, data) =>
+    request(`/directivo/docentes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getDirectivoDocenteAsignaciones: (id) => request(`/directivo/docentes/${id}/asignaciones`),
+
+  // Grupos
+  getDirectivoGrupos: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/directivo/grupos?${query}`);
+  },
+  createDirectivoGrupo: (data) =>
+    request('/directivo/grupos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateDirectivoGrupo: (id, data) =>
+    request(`/directivo/grupos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getDirectivoGrupoDetalle: (id) => request(`/directivo/grupos/${id}/detalle`),
+  inscribirAlumnoGrupo: (idGrupo, idAlumno) =>
+    request(`/directivo/grupos/${idGrupo}/inscribir`, {
+      method: 'POST',
+      body: JSON.stringify({ id_alumno: idAlumno }),
+    }),
+  desvincularAlumnoGrupo: (idGrupo, idAlumno) =>
+    request(`/directivo/grupos/${idGrupo}/alumnos/${idAlumno}`, {
+      method: 'DELETE',
+    }),
+
+  // Materias & Asignaciones
+  getDirectivoMaterias: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/directivo/materias?${query}`);
+  },
+  createDirectivoMateria: (data) =>
+    request('/directivo/materias', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateDirectivoMateria: (id, data) =>
+    request(`/directivo/materias/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  createDirectivoAsignacion: (data) =>
+    request('/directivo/asignaciones', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteDirectivoAsignacion: (id) =>
+    request(`/directivo/asignaciones/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Alertas
+  getDirectivoAlertas: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/directivo/alertas?${query}`);
+  },
+  createDirectivoAlerta: (data) =>
+    request('/directivo/alertas', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateDirectivoAlerta: (id, data) =>
+    request(`/directivo/alertas/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Rendimiento Académico
+  getDirectivoRendimiento: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/directivo/rendimiento?${query}`);
+  },
+
+  // Reportes
+  getDirectivoReportes: () => request('/directivo/reportes'),
+  generarDirectivoReporte: (data) =>
+    request('/directivo/reportes/generar', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Configuración Institucional
+  getDirectivoConfiguracion: () => request('/directivo/configuracion'),
+  updateDirectivoConfiguracion: (data) =>
+    request('/directivo/configuracion', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 };

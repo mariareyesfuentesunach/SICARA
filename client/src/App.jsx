@@ -16,8 +16,11 @@ import AdministradoresView from './views/AdministradoresView';
 import NotificacionesView from './views/NotificacionesView';
 import PerfilView from './views/PerfilView';
 
+// Módulo del Directivo Integrado
+import DirectivoPanel from './views/directivo/DirectivoPanel';
+
 export default function App() {
-  const { user, isAuthenticated, loading, logout } = useAuth();
+  const { user, isAuthenticated, loading, logout, isDirectivo } = useAuth();
   const { showToast } = useToast();
 
   const [currentView, setCurrentView] = useState('dashboard');
@@ -33,14 +36,14 @@ export default function App() {
     setCurrentView(view);
   };
 
-  // Contadores globales
+  // Contadores globales para Administrador General
   const [pendingCount, setPendingCount] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsList, setNotificationsList] = useState([]);
 
-  // Consultar contadores globales
+  // Consultar contadores globales sólo si es Administrador
   const fetchGlobalCounters = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isDirectivo) return;
     try {
       const [dashRes, notifRes] = await Promise.all([
         api.getDashboardStats().catch(() => null),
@@ -58,15 +61,15 @@ export default function App() {
     } catch (err) {
       console.warn('Error sincronizando contadores:', err);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isDirectivo]);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isDirectivo) {
       fetchGlobalCounters();
       const interval = setInterval(fetchGlobalCounters, 30000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, fetchGlobalCounters]);
+  }, [isAuthenticated, isDirectivo, fetchGlobalCounters]);
 
   const handleLogout = async () => {
     try {
@@ -100,6 +103,12 @@ export default function App() {
     return <LoginView />;
   }
 
+  // Si el usuario autenticado tiene el rol DIRECTIVO -> Renderizar el Panel del Directivo
+  if (isDirectivo) {
+    return <DirectivoPanel />;
+  }
+
+  // Si el usuario es ADMINISTRADOR GENERAL -> Mantener el Panel del Administrador General intacto
   return (
     <div className="min-h-screen bg-app-bg flex text-app-text">
       {/* Sidebar Lateral */}
@@ -126,7 +135,7 @@ export default function App() {
           onLogout={() => setShowLogoutConfirm(true)}
         />
 
-        {/* Contenido Principal de las Vistas */}
+        {/* Contenido Principal de las Vistas del Administrador General */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in">
           {currentView === 'dashboard' && (
             <DashboardView onNavigate={(view, opts) => handleNavigate(view, opts)} />
@@ -156,7 +165,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* Modal de Confirmación para Cerrar Sesión */}
+      {/* Modal de Confirmación para Cerrar Sesión del Administrador General */}
       <ConfirmModal
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}

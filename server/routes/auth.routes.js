@@ -2,11 +2,31 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
-const { authMiddleware, JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /api/auth/login - Inicio de sesión para Administrador Principal y Adicionales
+// Helper middleware para getMe y logout que acepte tanto Administrador como Directivo
+function commonAuth(req, res, next) {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Token no proporcionado.' });
+    }
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Sesión inválida o expirada.' });
+      }
+      req.user = decoded;
+      next();
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Error de autenticación.' });
+  }
+}
+
+// POST /api/auth/login - Inicio de sesión unificado para Administrador y Directivo
 router.post('/login', async (req, res) => {
   try {
     const { correo, contrasena } = req.body;
@@ -18,7 +38,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Validación de longitud máxima permitida por el estándar de cifrado bcrypt (72 caracteres)
     if (typeof contrasena === 'string' && contrasena.length > 72) {
       return res.status(400).json({
         success: false,
@@ -28,11 +47,14 @@ router.post('/login', async (req, res) => {
 
     const trimmedEmail = correo.trim().toLowerCase();
 
-    // Buscar usuario en base de datos
+    // Buscar usuario en base de datos con datos de su escuela si aplica
     const result = await db.query(
-      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, contrasena, rol, estado, es_principal, fecha_registro
-       FROM usuario
-       WHERE LOWER(correo) = $1`,
+      `SELECT u.id_usuario, u.id_escuela, u.nombre, u.apellidos, u.correo, u.contrasena, 
+              u.rol, u.estado, u.es_principal, u.fecha_registro,
+              e.nombre_escuela, e.cct, e.color_primario, e.color_secundario, e.color_complementario, e.tipo_logo
+       FROM usuario u
+       LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE LOWER(u.correo) = $1`,
       [trimmedEmail]
     );
 
@@ -49,15 +71,23 @@ router.post('/login', async (req, res) => {
     if (user.estado && user.estado.toLowerCase() !== 'activo') {
       return res.status(403).json({
         success: false,
-        message: 'Su cuenta se encuentra inactiva. Comuníquese con el Administrador Principal.',
+        message: 'Su cuenta se encuentra inactiva. Comuníquese con la administración.',
       });
     }
 
-    // Acceso restringido al Administrador General (Principal o Adicional)
-    if (user.rol !== 'Administrador') {
+    // Permitir roles autorizados: Administrador o Directivo
+    if (user.rol !== 'Administrador' && user.rol !== 'Directivo') {
       return res.status(403).json({
         success: false,
-        message: 'El acceso a este módulo está restringido a cuentas con rol de Administrador General.',
+        message: 'Acceso no disponible para este rol en esta versión del sistema.',
+      });
+    }
+
+    // Si es directivo, debe tener una escuela asignada
+    if (user.rol === 'Directivo' && !user.id_escuela) {
+      return res.status(403).json({
+        success: false,
+        message: 'La cuenta de Directivo no tiene una escuela asociada asignada.',
       });
     }
 
@@ -70,9 +100,10 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Generar Token JWT seguro con expiración de 12 horas
+    // Generar Token JWT seguro
     const tokenPayload = {
       id_usuario: user.id_usuario,
+      id_escuela: user.id_escuela || null,
       correo: user.correo,
       rol: user.rol,
       es_principal: Boolean(user.es_principal),
@@ -88,6 +119,7 @@ router.post('/login', async (req, res) => {
       token,
       user: {
         id_usuario: user.id_usuario,
+        id_escuela: user.id_escuela,
         nombre: user.nombre,
         apellidos: user.apellidos,
         correo: user.correo,
@@ -95,6 +127,15 @@ router.post('/login', async (req, res) => {
         estado: user.estado,
         es_principal: Boolean(user.es_principal),
         fecha_registro: user.fecha_registro,
+        escuela: user.id_escuela ? {
+          id_escuela: user.id_escuela,
+          nombre_escuela: user.nombre_escuela,
+          cct: user.cct,
+          color_primario: user.color_primario || '#722F37',
+          color_secundario: user.color_secundario || '#4A1722',
+          color_complementario: user.color_complementario || '#A64D5A',
+          tiene_logo: Boolean(user.tipo_logo),
+        } : null,
       },
     });
   } catch (error) {
@@ -106,13 +147,15 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me - Perfil actual protegido
-router.get('/me', authMiddleware, async (req, res) => {
+// GET /api/auth/me - Perfil actual protegido (admite Administrador y Directivo)
+router.get('/me', commonAuth, async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, rol, estado, es_principal, fecha_registro
-       FROM usuario
-       WHERE id_usuario = $1`,
+      `SELECT u.id_usuario, u.id_escuela, u.nombre, u.apellidos, u.correo, u.rol, u.estado, u.es_principal, u.fecha_registro,
+              e.nombre_escuela, e.cct, e.color_primario, e.color_secundario, e.color_complementario, e.tipo_logo
+       FROM usuario u
+       LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE u.id_usuario = $1`,
       [req.user.id_usuario]
     );
 
@@ -120,15 +163,37 @@ router.get('/me', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
     }
 
-    return res.json({ success: true, user: result.rows[0] });
+    const row = result.rows[0];
+    const user = {
+      id_usuario: row.id_usuario,
+      id_escuela: row.id_escuela,
+      nombre: row.nombre,
+      apellidos: row.apellidos,
+      correo: row.correo,
+      rol: row.rol,
+      estado: row.estado,
+      es_principal: Boolean(row.es_principal),
+      fecha_registro: row.fecha_registro,
+      escuela: row.id_escuela ? {
+        id_escuela: row.id_escuela,
+        nombre_escuela: row.nombre_escuela,
+        cct: row.cct,
+        color_primario: row.color_primario || '#722F37',
+        color_secundario: row.color_secundario || '#4A1722',
+        color_complementario: row.color_complementario || '#A64D5A',
+        tiene_logo: Boolean(row.tipo_logo),
+      } : null,
+    };
+
+    return res.json({ success: true, user });
   } catch (error) {
     console.error('Error en /api/auth/me:', error);
     return res.status(500).json({ success: false, message: 'Error al obtener datos de perfil.' });
   }
 });
 
-// PUT /api/auth/profile - Actualizar perfil del administrador
-router.put('/profile', authMiddleware, async (req, res) => {
+// PUT /api/auth/profile - Actualizar perfil
+router.put('/profile', commonAuth, async (req, res) => {
   try {
     const { nombre, apellidos, currentPassword, newPassword } = req.body;
 
@@ -136,7 +201,6 @@ router.put('/profile', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, message: 'El nombre es obligatorio.' });
     }
 
-    // Obtener datos actuales
     const userRes = await db.query(
       `SELECT * FROM usuario WHERE id_usuario = $1`,
       [req.user.id_usuario]
@@ -148,7 +212,6 @@ router.put('/profile', authMiddleware, async (req, res) => {
 
     const user = userRes.rows[0];
 
-    // Si se desea cambiar contraseña, validar la contraseña actual
     if (newPassword) {
       if (!currentPassword) {
         return res.status(400).json({
@@ -191,16 +254,40 @@ router.put('/profile', authMiddleware, async (req, res) => {
     }
 
     const updatedRes = await db.query(
-      `SELECT id_usuario, id_escuela, nombre, apellidos, correo, rol, estado, es_principal, fecha_registro
-       FROM usuario
-       WHERE id_usuario = $1`,
+      `SELECT u.id_usuario, u.id_escuela, u.nombre, u.apellidos, u.correo, u.rol, u.estado, u.es_principal, u.fecha_registro,
+              e.nombre_escuela, e.cct, e.color_primario, e.color_secundario, e.color_complementario, e.tipo_logo
+       FROM usuario u
+       LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE u.id_usuario = $1`,
       [req.user.id_usuario]
     );
+
+    const row = updatedRes.rows[0];
+    const updatedUser = {
+      id_usuario: row.id_usuario,
+      id_escuela: row.id_escuela,
+      nombre: row.nombre,
+      apellidos: row.apellidos,
+      correo: row.correo,
+      rol: row.rol,
+      estado: row.estado,
+      es_principal: Boolean(row.es_principal),
+      fecha_registro: row.fecha_registro,
+      escuela: row.id_escuela ? {
+        id_escuela: row.id_escuela,
+        nombre_escuela: row.nombre_escuela,
+        cct: row.cct,
+        color_primario: row.color_primario || '#722F37',
+        color_secundario: row.color_secundario || '#4A1722',
+        color_complementario: row.color_complementario || '#A64D5A',
+        tiene_logo: Boolean(row.tipo_logo),
+      } : null,
+    };
 
     return res.json({
       success: true,
       message: 'Perfil actualizado exitosamente.',
-      user: updatedRes.rows[0],
+      user: updatedUser,
     });
   } catch (error) {
     console.error('Error en /api/auth/profile:', error);
@@ -212,7 +299,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
 });
 
 // POST /api/auth/logout
-router.post('/logout', authMiddleware, (req, res) => {
+router.post('/logout', commonAuth, (req, res) => {
   return res.json({ success: true, message: 'Sesión finalizada correctamente.' });
 });
 

@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
 
     try {
       const data = await api.getMe();
-      if (data.success && data.user && data.user.rol === 'Administrador') {
+      if (data.success && data.user && (data.user.rol === 'Administrador' || data.user.rol === 'Directivo')) {
         setUser(data.user);
       } else {
         setUser(null);
@@ -78,7 +78,8 @@ export function AuthProvider({ children }) {
         login,
         logout,
         updateUser,
-        refreshProfile: checkAuth,
+        isDirectivo: user?.rol === 'Directivo',
+        isAdmin: user?.rol === 'Administrador',
       }}
     >
       {children}
@@ -89,8 +90,7 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth debe usarse dentro de un AuthProvider');
+    throw new Error('useAuth debe ser utilizado dentro de un AuthProvider');
   }
   return context;
 }
-

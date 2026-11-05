@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -470,7 +470,7 @@ export default function AdministradoresView() {
         </div>
       </div>
 
-      {/* MODAL: Crear Administrador Adicional (Tamaño y Botones Corregidos) */}
+      {/* MODAL: Guardar Administrador Adicional (Tamaño y Botones Corregidos) */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -492,7 +492,7 @@ export default function AdministradoresView() {
               disabled={actionLoading}
               className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
             >
-              {actionLoading ? 'Registrando...' : 'Crear Administrador'}
+              {actionLoading ? 'Registrando...' : 'Guardar Administrador'}
             </button>
           </>
         }
@@ -747,3 +747,4 @@ export default function AdministradoresView() {
     </div>
   );
 }
+
