@@ -654,7 +654,14 @@ export default function SolicitudesView({ initialFilter = 'todas', onRefreshDash
                 </div>
                 <div className="sm:col-span-2">
                   <span className="text-app-muted block">Dirección / Comunidad:</span>
-                  <span className="font-semibold text-app-text">{selectedSolicitud.direccion || 'Domicilio Conocido S/N'}</span>
+                  <span className="font-semibold text-app-text">
+                    {selectedSolicitud.direccion || 'Domicilio Conocido S/N'}
+                    {selectedSolicitud.colonia ? `, Col. ${selectedSolicitud.colonia}` : ''}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-app-muted block">Colonia:</span>
+                  <span className="font-semibold text-app-text">{selectedSolicitud.colonia || 'N/A'}</span>
                 </div>
                 <div>
                   <span className="text-app-muted block">Código Postal:</span>

@@ -19,9 +19,19 @@ import PerfilView from './views/PerfilView';
 // Módulo del Directivo Integrado
 import DirectivoPanel from './views/directivo/DirectivoPanel';
 
+// Nueva Landing Page Pública y Modal de Solicitud
+import LandingPageView from './views/landing/LandingPageView';
+import SolicitudRegistroModal from './views/landing/SolicitudRegistroModal';
+
 export default function App() {
   const { user, isAuthenticated, loading, logout, isDirectivo } = useAuth();
   const { showToast } = useToast();
+
+  // Estado para la navegación pública (cuando no está autenticado)
+  // 'landing' -> Muestra la nueva Landing Page de bienvenida
+  // 'login'   -> Muestra el formulario de inicio de sesión original
+  const [publicView, setPublicView] = useState('landing');
+  const [showSolicitudModal, setShowSolicitudModal] = useState(false);
 
   const [currentView, setCurrentView] = useState('dashboard');
   const [solicitudesInitialFilter, setSolicitudesInitialFilter] = useState('todas');
@@ -77,6 +87,7 @@ export default function App() {
       showToast('Sesión finalizada exitosamente.', 'info');
       setShowLogoutConfirm(false);
       setCurrentView('dashboard');
+      setPublicView('landing');
     } catch (err) {
       console.error('Error al cerrar sesión:', err);
     }
@@ -98,9 +109,38 @@ export default function App() {
     );
   }
 
-  // Si no está autenticado -> Pantalla de Inicio de Sesión
+  // Si no está autenticado -> Flujo público con Landing Page como bienvenida
   if (!isAuthenticated) {
-    return <LoginView />;
+    if (publicView === 'login') {
+      return (
+        <div className="relative">
+          {/* Botón flotante para regresar a la Landing Page */}
+          <div className="fixed top-4 left-4 z-50">
+            <button
+              onClick={() => setPublicView('landing')}
+              className="px-3.5 py-2 rounded-full bg-white text-app-text hover:text-vino-primary shadow-soft border border-app-border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <span>← Volver al inicio</span>
+            </button>
+          </div>
+          <LoginView />
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <LandingPageView
+          onGoToLogin={() => setPublicView('login')}
+          onOpenSolicitud={() => setShowSolicitudModal(true)}
+        />
+        {/* Modal de Solicitud de Registro de Escuela */}
+        <SolicitudRegistroModal
+          isOpen={showSolicitudModal}
+          onClose={() => setShowSolicitudModal(false)}
+        />
+      </>
+    );
   }
 
   // Si el usuario autenticado tiene el rol DIRECTIVO -> Renderizar el Panel del Directivo

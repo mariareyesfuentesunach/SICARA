@@ -3,8 +3,42 @@ const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const { authMiddleware } = require('../middleware/auth');
 const { notificarEscuelaPorCorreo } = require('../utils/email');
+const { consultarCodigoPostal, validarColoniaParaCP } = require('../utils/sepomex');
 
 const router = express.Router();
+
+// GET /api/solicitudes/cp/:codigo_postal - Consultar colonias por código postal mexicano
+router.get('/cp/:codigo_postal', async (req, res) => {
+  try {
+    const { codigo_postal } = req.params;
+    const cleanCP = (codigo_postal || '').trim();
+
+    if (!/^\d{5}$/.test(cleanCP)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El código postal debe contener exactamente 5 dígitos numéricos.',
+        colonias: [],
+      });
+    }
+
+    const data = await consultarCodigoPostal(cleanCP);
+    return res.json({
+      success: true,
+      encontrado: data.encontrado,
+      codigo_postal: data.cp,
+      colonias: data.colonias,
+      municipio: data.municipio,
+      estado: data.estado,
+    });
+  } catch (error) {
+    console.error('Error al consultar código postal:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Error al consultar el código postal.',
+      colonias: [],
+    });
+  }
+});
 
 // GET /api/solicitudes - Listar solicitudes con paginación, búsqueda y filtros
 router.get('/', authMiddleware, async (req, res) => {
@@ -52,6 +86,7 @@ router.get('/', authMiddleware, async (req, res) => {
         s.nivel_educativo,
         s.turno,
         s.direccion,
+        s.colonia,
         s.municipio,
         s.estado,
         s.codigo_postal,
@@ -102,6 +137,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         s.nivel_educativo,
         s.turno,
         s.direccion,
+        s.colonia,
         s.municipio,
         s.estado,
         s.codigo_postal,
@@ -142,6 +178,7 @@ router.post('/', async (req, res) => {
       nivel_educativo,
       turno,
       direccion,
+      colonia,
       municipio,
       estado,
       codigo_postal,
@@ -223,7 +260,7 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 4. Validar Código Postal (5 dígitos)
+    // 4. Validar Código Postal (5 dígitos) y Colonia correspondiente
     if (codigo_postal && codigo_postal.trim()) {
       const cleanCP = codigo_postal.trim();
       if (!/^\d{5}$/.test(cleanCP)) {
@@ -232,6 +269,18 @@ router.post('/', async (req, res) => {
           field: 'codigo_postal',
           message: 'El código postal debe contener exactamente 5 dígitos numéricos.',
         });
+      }
+
+      // Validar en el backend que la colonia corresponda al código postal capturado
+      if (colonia && colonia.trim()) {
+        const esValida = await validarColoniaParaCP(cleanCP, colonia.trim());
+        if (!esValida) {
+          return res.status(400).json({
+            success: false,
+            field: 'colonia',
+            message: `La colonia "${colonia.trim()}" no corresponde al código postal ${cleanCP}.`,
+          });
+        }
       }
     }
 
@@ -290,11 +339,11 @@ router.post('/', async (req, res) => {
 
     const insertRes = await db.query(
       `INSERT INTO solicitud_escuela (
-        nombre_escuela, cct, nivel_educativo, turno, direccion, municipio, estado,
+        nombre_escuela, cct, nivel_educativo, turno, direccion, colonia, municipio, estado,
         codigo_postal, telefono, correo_institucional, nombre_responsable,
         correo_responsable, telefono_responsable, fecha_solicitud, estado_solicitud,
         contrasena_responsable
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), 'Pendiente', $14)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), 'Pendiente', $15)
       RETURNING id_solicitud, nombre_escuela, cct, estado_solicitud, fecha_solicitud`,
       [
         nombre_escuela.trim(),
@@ -302,6 +351,7 @@ router.post('/', async (req, res) => {
         nivelFinal,
         turnoFinal,
         (direccion || '').trim(),
+        (colonia || '').trim(),
         (municipio || '').trim(),
         (estado || 'Jalisco').trim(),
         (codigo_postal || '').trim(),
@@ -381,14 +431,15 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
       await client.query(
         `UPDATE escuelas 
          SET nombre_escuela = $1, nivel_educativo = $2, turno = $3, direccion = $4,
-             municipio = $5, estado = $6, codigo_postal = $7, telefono = $8,
-             correo_institucional = $9, estado_escuela = 'Activa'
-         WHERE id_escuela = $10`,
+             colonia = $5, municipio = $6, estado = $7, codigo_postal = $8, telefono = $9,
+             correo_institucional = $10, estado_escuela = 'Activa'
+         WHERE id_escuela = $11`,
         [
           sol.nombre_escuela,
           sol.nivel_educativo,
           sol.turno,
           sol.direccion,
+          sol.colonia,
           sol.municipio,
           sol.estado,
           sol.codigo_postal,
@@ -400,9 +451,9 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
     } else {
       const newEscuela = await client.query(
         `INSERT INTO escuelas (
-          nombre_escuela, cct, nivel_educativo, turno, direccion, municipio,
+          nombre_escuela, cct, nivel_educativo, turno, direccion, colonia, municipio,
           estado, codigo_postal, telefono, correo_institucional, estado_escuela
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Activa')
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Activa')
         RETURNING id_escuela`,
         [
           sol.nombre_escuela,
@@ -410,6 +461,7 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
           sol.nivel_educativo,
           sol.turno,
           sol.direccion,
+          sol.colonia,
           sol.municipio,
           sol.estado,
           sol.codigo_postal,

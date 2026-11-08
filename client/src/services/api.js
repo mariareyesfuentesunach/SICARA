@@ -81,6 +81,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getColoniasPorCP: (cp) => request(`/solicitudes/cp/${encodeURIComponent(cp)}`),
   aprobarSolicitud: (id) =>
     request(`/solicitudes/${id}/aprobar`, {
       method: 'POST',
