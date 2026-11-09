@@ -66,6 +66,17 @@ export const api = {
     request('/auth/logout', {
       method: 'POST',
     }),
+  verificarTokenActivacion: (token) => request(`/auth/activacion/verificar/${encodeURIComponent(token)}`),
+  completarActivacion: (data) =>
+    request('/auth/activacion/completar', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  solicitarNuevoEnlaceActivacion: (correo) =>
+    request('/auth/activacion/solicitar-nuevo', {
+      method: 'POST',
+      body: JSON.stringify({ correo }),
+    }),
 
   // Dashboard Administrador General
   getDashboardStats: () => request('/dashboard/stats'),
@@ -84,13 +95,18 @@ export const api = {
   getColoniasPorCP: (cp) => request(`/solicitudes/cp/${encodeURIComponent(cp)}`),
   aprobarSolicitud: (id) =>
     request(`/solicitudes/${id}/aprobar`, {
-      method: 'POST',
+      method: 'PUT',
     }),
   rechazarSolicitud: (id, motivo_rechazo) =>
     request(`/solicitudes/${id}/rechazar`, {
-      method: 'POST',
+      method: 'PUT',
       body: JSON.stringify({ motivo_rechazo }),
     }),
+  reenviarCorreoAprobacion: (id) =>
+    request(`/solicitudes/${id}/reenviar-correo`, {
+      method: 'POST',
+    }),
+  checkSMTPStatus: () => request('/solicitudes/smtp/status'),
 
   // Escuelas (Admin General)
   getEscuelas: (params = {}) => {
@@ -128,6 +144,10 @@ export const api = {
     request(`/usuarios/${id}/estado`, {
       method: 'PUT',
       body: JSON.stringify({ estado }),
+    }),
+  reenviarActivacionUsuario: (id) =>
+    request(`/usuarios/${id}/reenviar-activacion`, {
+      method: 'POST',
     }),
 
   // Administradores

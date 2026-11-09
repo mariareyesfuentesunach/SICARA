@@ -67,10 +67,7 @@ export default function LandingPageView({ onGoToLogin, onOpenSolicitud }) {
               </div>
 
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.15] text-white">
-                Mejores decisiones educativas, con información{' '}
-                <span className="text-[#E8D3D6] underline decoration-[#A64D5A] decoration-wavy decoration-2">
-                  clara y oportuna.
-                </span>
+                Mejores decisiones educativas, con información clara y oportuna.
               </h1>
 
               <p className="text-sm sm:text-base text-gray-200 leading-relaxed font-normal max-w-2xl">

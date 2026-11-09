@@ -1,6 +1,8 @@
 const express = require('express');
+const crypto = require('crypto');
 const db = require('../config/db');
 const { authMiddleware } = require('../middleware/auth');
+const { notificarEscuelaPorCorreo } = require('../utils/email');
 
 const router = express.Router();
 
@@ -63,6 +65,7 @@ router.get('/', authMiddleware, async (req, res) => {
         u.correo,
         u.rol,
         u.estado,
+        u.cuenta_activada,
         u.fecha_registro,
         e.nombre_escuela,
         e.cct as escuela_cct
@@ -138,7 +141,7 @@ router.get('/por-escuela', authMiddleware, async (req, res) => {
       escuelasRes.rows.map(async (esc) => {
         // Consultar Directivo encargado de acuerdo a relaciones reales
         const directivoRes = await db.query(
-          `SELECT id_usuario, nombre, apellidos, correo, rol, estado, fecha_registro
+          `SELECT id_usuario, nombre, apellidos, correo, rol, estado, cuenta_activada, fecha_registro
            FROM usuario
            WHERE id_escuela = $1 AND rol = 'Directivo'
            LIMIT 1`,
@@ -154,6 +157,7 @@ router.get('/por-escuela', authMiddleware, async (req, res) => {
              u.correo, 
              u.rol, 
              u.estado, 
+             u.cuenta_activada,
              u.fecha_registro,
              d.especialidad,
              d.curp,
@@ -300,6 +304,91 @@ router.put('/:id/estado', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error al actualizar estado de usuario:', error);
     return res.status(500).json({ success: false, message: 'Error interno al actualizar estado.' });
+  }
+});
+
+// POST /api/usuarios/:id/reenviar-activacion - Reenviar correo de activación con nuevo token
+router.post('/:id/reenviar-activacion', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Buscar al usuario y su escuela vinculada
+    const userRes = await db.query(
+      `SELECT u.id_usuario, u.nombre, u.apellidos, u.correo, u.rol, u.estado, u.cuenta_activada,
+              e.id_escuela, e.nombre_escuela, e.cct
+       FROM usuario u
+       LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE u.id_usuario = $1`,
+      [id]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+    }
+
+    const targetUser = userRes.rows[0];
+
+    // Verificar si la cuenta ya está activada
+    if (targetUser.cuenta_activada === true) {
+      return res.status(400).json({
+        success: false,
+        code: 'CUENTA_YA_ACTIVADA',
+        message: `La cuenta de ${targetUser.nombre} ya se encuentra activada. El usuario puede iniciar sesión directamente.`,
+      });
+    }
+
+    if (!targetUser.correo) {
+      return res.status(400).json({
+        success: false,
+        message: 'El usuario no tiene una dirección de correo electrónico registrada.',
+      });
+    }
+
+    // Generar un nuevo token seguro de activación
+    const nuevoToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpira = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 horas de vigencia
+
+    // Guardar en la base de datos (invalidando cualquier token previo)
+    await db.query(
+      `UPDATE usuario
+       SET token_activacion = $1,
+           token_activacion_expira = $2
+       WHERE id_usuario = $3`,
+      [nuevoToken, tokenExpira, id]
+    );
+
+    // Despachar el correo electrónico institucional
+    const emailStatus = await notificarEscuelaPorCorreo({
+      destinatario: targetUser.correo,
+      nombreEscuela: targetUser.nombre_escuela || 'Plantel Escolar',
+      estado: 'Aprobada',
+      solicitudData: {
+        nombre_responsable: `${targetUser.nombre} ${targetUser.apellidos || ''}`.trim(),
+        nombre_escuela: targetUser.nombre_escuela || 'Plantel Escolar',
+        cct: targetUser.cct || 'N/A',
+        token_activacion: nuevoToken,
+      },
+    });
+
+    if (emailStatus && emailStatus.sent) {
+      return res.json({
+        success: true,
+        message: `Correo de activación reenviado exitosamente a ${targetUser.correo}.`,
+        emailStatus,
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: `No se pudo enviar el correo de activación: ${emailStatus?.error || 'Error en el servicio SMTP.'}`,
+        emailStatus,
+      });
+    }
+  } catch (error) {
+    console.error('Error al reenviar activación de usuario:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno al procesar el reenvío del correo de activación.',
+    });
   }
 });
 

@@ -566,13 +566,26 @@ export default function SolicitudesView({ initialFilter = 'todas', onRefreshDash
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
-              >
-                Cerrar
-              </button>
+              <div className="flex items-center gap-2">
+                {(selectedSolicitud.estado_solicitud || '').toLowerCase() === 'aprobada' && (
+                  <button
+                    type="button"
+                    onClick={() => handleReenviarCorreo(selectedSolicitud)}
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Reenviar Correo de Aprobación</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+                >
+                  Cerrar
+                </button>
+              </div>
             )
           }
         >

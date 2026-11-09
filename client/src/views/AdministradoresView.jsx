@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -470,13 +470,13 @@ export default function AdministradoresView() {
         </div>
       </div>
 
-      {/* MODAL: Guardar Administrador Adicional (Tamaño y Botones Corregidos) */}
+      {/* MODAL: Guardar Administrador Adicional (Ventana Flotante Amplia como Solicitudes de Escuelas) */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title="Crear Nuevo Administrador General"
         subtitle="El Administrador Principal asignará las credenciales iniciales para esta cuenta adicional"
-        maxWidth="max-w-xl"
+        maxWidth="max-w-3xl"
         footer={
           <>
             <button
@@ -490,154 +490,164 @@ export default function AdministradoresView() {
               type="submit"
               form="form-crear-admin"
               disabled={actionLoading}
-              className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+              className="px-5 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
             >
               {actionLoading ? 'Registrando...' : 'Guardar Administrador'}
             </button>
           </>
         }
       >
-        <form id="form-crear-admin" onSubmit={handleCreateSubmit} autoComplete="off" className="space-y-3.5 text-xs">
-          {/* Fila en 2 columnas: Nombre y Apellidos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Nombre <span className="text-status-error">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                  <User className="w-4 h-4" />
+        <form id="form-crear-admin" onSubmit={handleCreateSubmit} autoComplete="off" className="space-y-4 text-xs">
+          {/* Bloque 1: Datos Personales y de Contacto */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-vino-dark uppercase tracking-wider pb-1 border-b border-app-border">
+              <User className="w-4 h-4 text-vino-primary" />
+              <span>Datos Personales y de Identificación</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
+                  Nombre <span className="text-status-error">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={createData.nombre}
+                    onChange={(e) => setCreateData({ ...createData, nombre: e.target.value })}
+                    placeholder="Ej. Rodrigo"
+                    className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
+                      formErrors.nombre ? 'border-status-error' : 'border-app-border'
+                    } focus:outline-none focus:border-vino-primary text-xs`}
+                  />
                 </div>
+                {formErrors.nombre && (
+                  <p className="text-[11px] text-status-error mt-1">{formErrors.nombre}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
+                  Apellidos
+                </label>
                 <input
                   type="text"
-                  required
-                  value={createData.nombre}
-                  onChange={(e) => setCreateData({ ...createData, nombre: e.target.value })}
-                  placeholder="Ej. Rodrigo"
-                  className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
-                    formErrors.nombre ? 'border-status-error' : 'border-app-border'
-                  } focus:outline-none focus:border-vino-primary text-xs`}
+                  value={createData.apellidos}
+                  onChange={(e) => setCreateData({ ...createData, apellidos: e.target.value })}
+                  placeholder="Ej. González Méndez"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
                 />
               </div>
-              {formErrors.nombre && (
-                <p className="text-[11px] text-status-error mt-1">{formErrors.nombre}</p>
-              )}
-            </div>
 
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Apellidos
-              </label>
-              <input
-                type="text"
-                value={createData.apellidos}
-                onChange={(e) => setCreateData({ ...createData, apellidos: e.target.value })}
-                placeholder="Ej. González Méndez"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-          </div>
-
-          {/* Correo Electrónico */}
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Correo Electrónico <span className="text-status-error">*</span>
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                <Mail className="w-4 h-4" />
-              </div>
-              <input
-                type="email"
-                required
-                autoComplete="off"
-                value={createData.correo}
-                onChange={(e) => setCreateData({ ...createData, correo: e.target.value })}
-                placeholder="ejemplo.admin@sicara.gob.mx"
-                className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
-                  formErrors.correo ? 'border-status-error' : 'border-app-border'
-                } focus:outline-none focus:border-vino-primary text-xs`}
-              />
-            </div>
-            {formErrors.correo && (
-              <p className="text-[11px] text-status-error mt-1">{formErrors.correo}</p>
-            )}
-          </div>
-
-          {/* Banner Informativo */}
-          <div className="p-3 rounded-subtle bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1">
-            <div className="font-bold flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-amber-700" />
-              <span>Asignación de Credenciales Iniciales:</span>
-            </div>
-            <p className="leading-relaxed">
-              Proporcione una contraseña segura inicial y comuníquesela al nuevo administrador. Las contraseñas quedan almacenadas en PostgreSQL con cifrado unidireccional bcrypt.
-            </p>
-          </div>
-
-          {/* Fila en 2 columnas: Contraseña Inicial y Confirmar Contraseña */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Contraseña Inicial <span className="text-status-error">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                  <Lock className="w-4 h-4" />
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
+                  Correo Electrónico <span className="text-status-error">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    autoComplete="off"
+                    value={createData.correo}
+                    onChange={(e) => setCreateData({ ...createData, correo: e.target.value })}
+                    placeholder="ejemplo.admin@sicara.gob.mx"
+                    className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
+                      formErrors.correo ? 'border-status-error' : 'border-app-border'
+                    } focus:outline-none focus:border-vino-primary text-xs`}
+                  />
                 </div>
-                <input
-                  type={showCreatePass ? 'text' : 'password'}
-                  required
-                  autoComplete="new-password"
-                  value={createData.contrasena}
-                  onChange={(e) => setCreateData({ ...createData, contrasena: e.target.value })}
-                  placeholder="Mínimo 6 caracteres"
-                  className={`w-full pl-9 pr-9 py-2 rounded-subtle border ${
-                    formErrors.contrasena ? 'border-status-error' : 'border-app-border'
-                  } focus:outline-none focus:border-vino-primary text-xs`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCreatePass(!showCreatePass)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-app-muted hover:text-vino-primary cursor-pointer"
-                >
-                  {showCreatePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                {formErrors.correo && (
+                  <p className="text-[11px] text-status-error mt-1">{formErrors.correo}</p>
+                )}
               </div>
-              {formErrors.contrasena && (
-                <p className="text-[11px] text-status-error mt-1">{formErrors.contrasena}</p>
-              )}
+            </div>
+          </div>
+
+          {/* Bloque 2: Credenciales de Seguridad */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-vino-dark uppercase tracking-wider pb-1 border-b border-app-border">
+              <KeyRound className="w-4 h-4 text-vino-primary" />
+              <span>Credenciales de Seguridad</span>
             </div>
 
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Confirmar Contraseña <span className="text-status-error">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
-                  <Lock className="w-4 h-4" />
-                </div>
-                <input
-                  type={showCreatePass ? 'text' : 'password'}
-                  required
-                  autoComplete="new-password"
-                  value={createData.confirmar_contrasena}
-                  onChange={(e) => setCreateData({ ...createData, confirmar_contrasena: e.target.value })}
-                  placeholder="Repita la contraseña"
-                  className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
-                    formErrors.confirmar_contrasena ? 'border-status-error' : 'border-app-border'
-                  } focus:outline-none focus:border-vino-primary text-xs`}
-                />
+            {/* Banner Informativo */}
+            <div className="p-3 rounded-subtle bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2.5">
+              <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong className="font-bold">Asignación de Credenciales Iniciales:</strong> Proporcione una contraseña segura inicial y comuníquesela al nuevo administrador. Las contraseñas quedan almacenadas en PostgreSQL con cifrado seguro unidireccional bcrypt.
               </div>
-              {formErrors.confirmar_contrasena && (
-                <p className="text-[11px] text-status-error mt-1">{formErrors.confirmar_contrasena}</p>
-              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
+                  Contraseña Inicial <span className="text-status-error">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showCreatePass ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={createData.contrasena}
+                    onChange={(e) => setCreateData({ ...createData, contrasena: e.target.value })}
+                    placeholder="Mínimo 6 caracteres"
+                    className={`w-full pl-9 pr-9 py-2 rounded-subtle border ${
+                      formErrors.contrasena ? 'border-status-error' : 'border-app-border'
+                    } focus:outline-none focus:border-vino-primary text-xs`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCreatePass(!showCreatePass)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-app-muted hover:text-vino-primary cursor-pointer"
+                  >
+                    {showCreatePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {formErrors.contrasena && (
+                  <p className="text-[11px] text-status-error mt-1">{formErrors.contrasena}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
+                  Confirmar Contraseña <span className="text-status-error">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showCreatePass ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={createData.confirmar_contrasena}
+                    onChange={(e) => setCreateData({ ...createData, confirmar_contrasena: e.target.value })}
+                    placeholder="Repita la contraseña"
+                    className={`w-full pl-9 pr-3 py-2 rounded-subtle border ${
+                      formErrors.confirmar_contrasena ? 'border-status-error' : 'border-app-border'
+                    } focus:outline-none focus:border-vino-primary text-xs`}
+                  />
+                </div>
+                {formErrors.confirmar_contrasena && (
+                  <p className="text-[11px] text-status-error mt-1">{formErrors.confirmar_contrasena}</p>
+                )}
+              </div>
             </div>
           </div>
         </form>
       </Modal>
 
-      {/* MODAL: Editar Administrador */}
+      {/* MODAL: Editar Administrador (Ventana Flotante Amplia) */}
       {adminToEdit && (
         <Modal
           isOpen={showEditModal}
@@ -647,7 +657,7 @@ export default function AdministradoresView() {
           }}
           title="Modificar Datos de Administrador"
           subtitle={`Actualizar información de ${adminToEdit.nombre}`}
-          maxWidth="max-w-lg"
+          maxWidth="max-w-3xl"
           footer={
             <>
               <button
@@ -664,33 +674,43 @@ export default function AdministradoresView() {
                 type="submit"
                 form="form-editar-admin"
                 disabled={actionLoading}
-                className="px-4 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm disabled:opacity-50 cursor-pointer transition-all"
+                className="px-5 py-2 rounded-subtle bg-vino-primary hover:bg-vino-hover text-white font-bold text-xs shadow-sm disabled:opacity-50 cursor-pointer transition-all"
               >
                 {actionLoading ? 'Guardando...' : 'Guardar Cambios'}
               </button>
             </>
           }
         >
-          <form id="form-editar-admin" onSubmit={handleEditSubmit} className="space-y-3.5 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form id="form-editar-admin" onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+            <div className="flex items-center gap-2 text-xs font-bold text-vino-dark uppercase tracking-wider pb-1 border-b border-app-border">
+              <User className="w-4 h-4 text-vino-primary" />
+              <span>Datos del Administrador</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
                   Nombre <span className="text-status-error">*</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={editData.nombre}
-                  onChange={(e) => setEditData({ ...editData, nombre: e.target.value })}
-                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={editData.nombre}
+                    onChange={(e) => setEditData({ ...editData, nombre: e.target.value })}
+                    className="w-full pl-9 pr-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                  />
+                </div>
                 {editErrors.nombre && (
                   <p className="text-[11px] text-status-error mt-1">{editErrors.nombre}</p>
                 )}
               </div>
 
               <div>
-                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
                   Apellidos
                 </label>
                 <input
@@ -700,22 +720,27 @@ export default function AdministradoresView() {
                   className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Correo Electrónico <span className="text-status-error">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={editData.correo}
-                onChange={(e) => setEditData({ ...editData, correo: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-              {editErrors.correo && (
-                <p className="text-[11px] text-status-error mt-1">{editErrors.correo}</p>
-              )}
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider text-[11px]">
+                  Correo Electrónico <span className="text-status-error">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={editData.correo}
+                    onChange={(e) => setEditData({ ...editData, correo: e.target.value })}
+                    className="w-full pl-9 pr-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                  />
+                </div>
+                {editErrors.correo && (
+                  <p className="text-[11px] text-status-error mt-1">{editErrors.correo}</p>
+                )}
+              </div>
             </div>
           </form>
         </Modal>

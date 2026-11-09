@@ -54,6 +54,11 @@ export function AuthProvider({ children }) {
     throw new Error(res.message || 'Error en inicio de sesión');
   };
 
+  const setSession = (token, userData) => {
+    setToken(token);
+    setUser(userData);
+  };
+
   const logout = async () => {
     try {
       await api.logout();
@@ -77,6 +82,7 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
+        setSession,
         updateUser,
         isDirectivo: user?.rol === 'Directivo',
         isAdmin: user?.rol === 'Administrador',

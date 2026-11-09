@@ -185,6 +185,31 @@ export default function UsuariosView() {
     }
   };
 
+  // Reenviar correo de activación
+  const handleReenviarActivacion = async (user) => {
+    if (!user || actionLoading) return;
+
+    if (user.cuenta_activada === true) {
+      showToast(`La cuenta de ${user.nombre} ya se encuentra activada.`, 'info');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const res = await api.reenviarActivacionUsuario(user.id_usuario);
+      if (res.success) {
+        showToast(res.message || 'Correo de activación reenviado exitosamente.', 'success');
+        if (viewMode === 'por_escuela') fetchEscuelasConUsuarios();
+        else fetchUsuarios();
+      }
+    } catch (err) {
+      console.error('Error al reenviar activación:', err);
+      showToast(err.message || 'No se pudo enviar el correo de activación.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const selectedEscuela = escuelas.find((e) => e.id_escuela === selectedEscuelaId) || null;
 
   return (
@@ -415,6 +440,17 @@ export default function UsuariosView() {
                       </div>
 
                       <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                        {selectedEscuela.directivo.cuenta_activada === false && (
+                          <button
+                            onClick={() => handleReenviarActivacion(selectedEscuela.directivo)}
+                            disabled={actionLoading}
+                            className="px-2.5 py-1 text-xs font-bold rounded-subtle bg-vino-primary hover:bg-vino-hover text-white shadow-xs cursor-pointer transition-colors flex items-center gap-1 disabled:opacity-50"
+                            title="Reenviar enlace de activación"
+                          >
+                            <Mail className="w-3 h-3" />
+                            <span>Reenviar activación</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenRoleModal(selectedEscuela.directivo)}
                           className="px-2.5 py-1 text-xs font-semibold rounded-subtle border border-app-border text-app-muted hover:text-vino-primary hover:border-vino-primary cursor-pointer transition-colors"
@@ -601,6 +637,16 @@ export default function UsuariosView() {
                           <div className="inline-flex items-center gap-1.5">
                             {u.rol !== 'Administrador' && (
                               <>
+                                {u.cuenta_activada === false && (
+                                  <button
+                                    onClick={() => handleReenviarActivacion(u)}
+                                    disabled={actionLoading}
+                                    className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary cursor-pointer disabled:opacity-50"
+                                    title="Reenviar correo de activación"
+                                  >
+                                    <Mail className="w-4 h-4 text-vino-primary" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleOpenRoleModal(u)}
                                   className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary cursor-pointer"

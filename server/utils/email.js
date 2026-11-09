@@ -1,7 +1,75 @@
 // server/utils/email.js
-// Utilidad para generación de comprobantes PDF y despacho de notificaciones por correo electrónico
+// Utilidad para generación de comprobantes PDF, despacho de notificaciones y verificación SMTP
 
 const PDFDocument = require('pdfkit');
+const nodemailer = require('nodemailer');
+
+/**
+ * Crea y retorna el transporte de Nodemailer configurado con STARTTLS para Gmail u otros SMTP.
+ */
+function crearTransporteSMTP() {
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure, // false para 587 (STARTTLS)
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false, // Compatibilidad con redes locales / certificados
+    },
+  });
+}
+
+/**
+ * Comprueba el estado de la conexión SMTP y valida credenciales sin exponer contraseñas.
+ * @returns {Promise<{ ok: boolean, code: string, message: string, configured: boolean, user?: string }>}
+ */
+async function verificarConexionSMTP() {
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const port = process.env.SMTP_PORT || '587';
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    return {
+      ok: false,
+      code: 'MISSING_CREDENTIALS',
+      message: 'Faltan credenciales SMTP (SMTP_USER o SMTP_PASS no definidas en el archivo .env).',
+      configured: false,
+    };
+  }
+
+  try {
+    const transporter = crearTransporteSMTP();
+    await transporter.verify();
+    return {
+      ok: true,
+      code: 'CONNECTED',
+      message: `Conexión SMTP establecida exitosamente con ${host}:${port}. Servicio listo para enviar correos.`,
+      configured: true,
+      user: user.replace(/(.{2})(.*)(@.*)/, '$1***$3'), // Correo ofuscado para seguridad
+    };
+  } catch (error) {
+    let msg = error.message;
+    if (error.code === 'EAUTH' || error.responseCode === 535) {
+      msg = 'Credenciales de Google SMTP incorrectas. Asegúrese de utilizar una "Contraseña de aplicación" generada de 16 caracteres y no la contraseña habitual de la cuenta.';
+    } else if (error.code === 'ESOCKET' || error.code === 'ETIMEDOUT') {
+      msg = `No se pudo conectar con el servidor SMTP (${host}:${port}). Verifique su conexión de red o cortafuegos.`;
+    }
+    return {
+      ok: false,
+      code: error.code || 'SMTP_ERROR',
+      message: msg,
+      configured: true,
+    };
+  }
+}
 
 /**
  * Genera en memoria un comprobante formal de incorporación escolar en formato PDF.
@@ -100,53 +168,42 @@ function generarComprobantePDF(data) {
       doc.font('Helvetica-Bold').text('Teléfono / Contacto:', 55, startY + 110);
       doc.font('Helvetica').text(data.telefono || data.correo_institucional || 'N/A', 175, startY + 110);
 
-      // 5. Bloque de Responsable y Resolución
-      const resY = startY + 145;
-      doc.rect(45, resY, 522, 100).fillAndStroke('#FBF9F9', '#E5D7D9');
+      // 5. Bloque de Datos del Directivo
+      const directivoY = 375;
+      doc.rect(45, directivoY, 522, 90).fillAndStroke('#FBF9F9', '#E5D7D9');
 
       doc.fillColor(vinoPrimary)
          .fontSize(11)
          .font('Helvetica-Bold')
-         .text('DATOS DE LA DIRECTIVA Y RESOLUCIÓN ADMINISTRATIVA', 55, resY + 10);
+         .text('DIRECTIVO / RESPONSABLE DESIGNADO', 55, directivoY + 10);
 
       doc.fillColor(textDark).fontSize(9).font('Helvetica-Bold');
-      doc.text('Directivo Responsable:', 55, resY + 30);
-      doc.font('Helvetica').text(data.nombre_responsable || 'Directivo Responsable', 175, resY + 30);
+      doc.text('Nombre del Responsable:', 55, directivoY + 30);
+      doc.font('Helvetica').text(data.nombre_responsable || 'N/A', 190, directivoY + 30);
 
-      doc.font('Helvetica-Bold').text('Correo Electrónico:', 55, resY + 46);
-      doc.font('Helvetica').text(data.correo_responsable || 'N/A', 175, resY + 46);
+      doc.font('Helvetica-Bold').text('Correo Electrónico (Acceso):', 55, directivoY + 46);
+      doc.font('Helvetica').text(data.correo_responsable || 'N/A', 190, directivoY + 46);
 
-      doc.font('Helvetica-Bold').text('Resolución:', 55, resY + 62);
-      doc.font('Helvetica-Bold').fillColor('#16A34A').text('INCORPORACIÓN AUTORIZADA (ACTIVA)', 175, resY + 62);
-
-      doc.fillColor(textDark).font('Helvetica-Bold').text('Administrador Responsable:', 55, resY + 78);
-      doc.font('Helvetica').text(data.admin_nombre || 'Administrador General SICARA', 175, resY + 78);
+      doc.font('Helvetica-Bold').text('Estado en Plataforma:', 55, directivoY + 62);
+      doc.fillColor('#1E7E34').font('Helvetica-Bold').text('ACTIVO (Rol Directivo Habilitado)', 190, directivoY + 62);
 
       // 6. Sello y firmas
       const footerY = 530;
-      doc.rect(190, footerY, 230, 60).stroke('#BCA2A6');
-      doc.fillColor(vinoDark)
-         .fontSize(9)
-         .font('Helvetica-Bold')
-         .text('SELLO DIGITAL DE CERTIFICACIÓN', 190, footerY + 10, { width: 230, align: 'center' });
-      doc.fontSize(7)
-         .font('Courier')
-         .fillColor(textMuted)
-         .text(`CERT-${Date.now().toString(16).toUpperCase()}-SICARA-GOB`, 190, footerY + 28, { width: 230, align: 'center' });
-      doc.fontSize(7)
-         .font('Helvetica')
-         .text('Válido en la plataforma institucional SICARA', 190, footerY + 42, { width: 230, align: 'center' });
+      doc.strokeColor('#CCCCCC').lineWidth(1).moveTo(80, footerY).lineTo(250, footerY).stroke();
+      doc.strokeColor('#CCCCCC').lineWidth(1).moveTo(360, footerY).lineTo(530, footerY).stroke();
 
-      // 7. Pie de página
+      doc.fillColor(textDark).fontSize(9).font('Helvetica-Bold');
+      doc.text(data.admin_nombre || 'Administración General', 80, footerY + 8, { width: 170, align: 'center' });
+      doc.font('Helvetica').fontSize(8).fillColor(textMuted).text('Autorización y Certificación', 80, footerY + 22, { width: 170, align: 'center' });
+
+      doc.fillColor(textDark).fontSize(9).font('Helvetica-Bold');
+      doc.text(data.nombre_responsable || 'Dirección del Plantel', 360, footerY + 8, { width: 170, align: 'center' });
+      doc.font('Helvetica').fontSize(8).fillColor(textMuted).text('Recepción y Compromiso Escolar', 360, footerY + 22, { width: 170, align: 'center' });
+
+      // 7. Pie institucional
       doc.fontSize(8)
-         .font('Helvetica')
-         .fillColor(textMuted)
-         .text(
-           'SICARA © 2026 — Plataforma Integral de Control y Seguimiento Académico en Comunidades Rurales.\nEste documento es un comprobante digital generado automáticamente por el sistema.',
-           45,
-           650,
-           { align: 'center', lineGap: 2 }
-         );
+         .fillColor('#888888')
+         .text('Este documento digital cuenta con validez interna dentro de la infraestructura SICARA. Generado de forma automatizada.', 45, 680, { align: 'center', width: 522 });
 
       doc.end();
     } catch (err) {
@@ -187,36 +244,98 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
   }
 
   try {
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    const transporter = crearTransporteSMTP();
 
     let attachments = [];
     let asunto = '';
     let cuerpoTexto = '';
+    let cuerpoHtml = '';
+
+    const nombreResp = (solicitudData && (solicitudData.nombre_responsable || solicitudData.nombre)) || 'Directivo(a)';
+    const nombreEsc = nombreEscuela || (solicitudData && solicitudData.nombre_escuela) || 'la institución educativa';
+
+    // Generar enlace de activación si se cuenta con token
+    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const enlaceActivacion = solicitudData.token_activacion
+      ? `${clientBaseUrl}/?activacion=${encodeURIComponent(solicitudData.token_activacion)}`
+      : null;
 
     if (estado === 'Aprobada') {
-      asunto = `Solicitud Aprobada - SICARA (${nombreEscuela})`;
-      cuerpoTexto = `Estimado(a) directivo(a) de ${nombreEscuela}:\n\n` +
-        `Nos complace informarle que la solicitud de registro e incorporación al Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales (SICARA) ha sido APROBADA satisfactoriamente.\n\n` +
-        `Detalles de la resolución:\n` +
-        `• Plantel: ${nombreEscuela}\n` +
-        `• Clave CCT: ${solicitudData.cct || 'N/A'}\n` +
-        `• Nivel: ${solicitudData.nivel_educativo || 'Primaria'}\n` +
-        `• Turno: ${solicitudData.turno || 'Matutino'}\n` +
-        `• Municipio: ${solicitudData.municipio || 'Jalisco'}\n\n` +
-        `Se adjunta a este correo su Comprobante Oficial de Incorporación en formato PDF.\n` +
-        `Ya puede acceder al sistema con las credenciales registradas para su directiva.\n\n` +
-        `Atentamente,\n` +
-        `Administración General de SICARA\n` +
-        `Educación y Futuro para las Comunidades Rurales`;
+      asunto = 'Solicitud de registro de escuela aprobada - SICARA';
+      
+      cuerpoTexto = `Hola, ${nombreResp}.\n\n` +
+        `Nos complace informarle que la solicitud de registro de la escuela ${nombreEsc} en SICARA ha sido aprobada correctamente.\n\n` +
+        `A partir de este momento, la escuela se encuentra registrada en la plataforma.\n\n` +
+        (enlaceActivacion
+          ? `Para activar su cuenta como Directivo y establecer su contraseña segura, ingrese al siguiente enlace:\n${enlaceActivacion}\n\n`
+          : `Para continuar con la activación de su cuenta como Directivo, siga las instrucciones que recibirá en el correo de activación correspondiente.\n\n`) +
+        `Gracias por formar parte de SICARA.\n\n` +
+        `Sistema SICARA\n` +
+        `Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales.`;
+
+      cuerpoHtml = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${asunto}</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F5F5; margin: 0; padding: 24px; color: #292329; }
+          .container { max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; border: 1px solid #E8E2E4; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+          .header { background: linear-gradient(135deg, #4A1722, #722F37); padding: 32px 28px; text-align: center; color: #FFFFFF; }
+          .badge { display: inline-block; background-color: #E8F5E9; color: #1B5E20; padding: 6px 16px; border-radius: 999px; font-weight: 700; font-size: 13px; text-transform: uppercase; margin-top: 12px; border: 1px solid #C8E6C9; letter-spacing: 0.5px; }
+          .content { padding: 32px 28px; font-size: 15px; line-height: 1.6; color: #292329; }
+          .school-card { background: #FAF7F8; border-left: 4px solid #722F37; padding: 16px; border-radius: 8px; margin: 20px 0; }
+          .school-title { font-weight: 700; color: #4A1722; font-size: 16px; margin: 0 0 6px 0; }
+          .btn-activar { display: inline-block; background-color: #722F37; color: #FFFFFF !important; font-weight: bold; text-decoration: none; padding: 14px 32px; border-radius: 999px; font-size: 14px; margin: 16px 0; box-shadow: 0 4px 10px rgba(114,47,55,0.3); }
+          .footer { background: #F8F5F5; padding: 20px 28px; text-align: center; font-size: 12px; color: #685D68; border-top: 1px solid #E8E2E4; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0; font-size: 24px; letter-spacing: 1px;">SICARA</h1>
+            <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Escuelas Rurales</p>
+            <div class="badge">✓ APROBADA</div>
+          </div>
+          <div class="content">
+            <p>Hola, <strong>${nombreResp}</strong>.</p>
+            <p>Nos complace informarle que la solicitud de registro de la escuela <strong>${nombreEsc}</strong> en SICARA ha sido aprobada correctamente.</p>
+            
+            <div class="school-card">
+              <p class="school-title">${nombreEsc}</p>
+              <p style="margin: 0; font-size: 13px; color: #555;"><strong>Clave CCT:</strong> ${solicitudData.cct || 'N/A'}</p>
+              <p style="margin: 4px 0 0 0; font-size: 13px; color: #555;"><strong>Nivel y Turno:</strong> ${solicitudData.nivel_educativo || 'Primaria'} (${solicitudData.turno || 'Matutino'})</p>
+            </div>
+
+            <p>A partir de este momento, la escuela se encuentra registrada en la plataforma.</p>
+            
+            ${
+              enlaceActivacion
+                ? `<div style="text-align: center; margin: 28px 0;">
+                    <a href="${enlaceActivacion}" class="btn-activar" target="_blank">
+                      ACTIVAR CUENTA DE DIRECTIVO
+                    </a>
+                    <p style="font-size: 12px; color: #777; margin-top: 8px;">Este enlace tiene una vigencia de 48 horas.</p>
+                  </div>`
+                : `<p>Para continuar con la activación de su cuenta como Directivo, siga las instrucciones que recibirá en el correo de activación correspondiente.</p>`
+            }
+
+            <p style="margin-top: 24px;">Gracias por formar parte de SICARA.</p>
+            
+            <p style="margin-top: 32px; border-top: 1px solid #E8E2E4; padding-top: 16px;">
+              <strong>Sistema SICARA</strong><br>
+              <span style="font-size: 13px; color: #685D68;">Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales.</span>
+            </p>
+          </div>
+          <div class="footer">
+            Este es un correo oficial generado automáticamente por la plataforma SICARA.
+          </div>
+        </div>
+      </body>
+      </html>
+      `;
 
       try {
         const pdfBuffer = await generarComprobantePDF({
@@ -229,7 +348,7 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
           contentType: 'application/pdf',
         });
       } catch (pdfErr) {
-        console.warn('[NOTIFICACIÓN CORREO] Aviso: No se pudo generar el PDF adjunto, se envía correo en texto plano:', pdfErr.message);
+        console.warn('[NOTIFICACIÓN CORREO] Aviso: No se pudo generar el PDF adjunto, se envía correo estándar:', pdfErr.message);
       }
     } else {
       asunto = `Resolución de Solicitud de Incorporación - SICARA (${nombreEscuela})`;
@@ -243,13 +362,21 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
         `Control Escolar en Comunidades Rurales`;
     }
 
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || `"SICARA Administración" <${process.env.SMTP_USER}>`,
+    const fromAddress = process.env.SMTP_FROM || (process.env.SMTP_USER ? `"SICARA Administración" <${process.env.SMTP_USER}>` : undefined);
+
+    const mailOptions = {
+      from: fromAddress,
       to: cleanDest,
       subject: asunto,
       text: cuerpoTexto,
       attachments,
-    });
+    };
+
+    if (cuerpoHtml) {
+      mailOptions.html = cuerpoHtml;
+    }
+
+    const info = await transporter.sendMail(mailOptions);
 
     console.log(`[NOTIFICACIÓN CORREO] Correo enviado exitosamente a: ${cleanDest}. MessageID: ${info.messageId}`);
     return {
@@ -267,6 +394,8 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
 }
 
 module.exports = {
+  crearTransporteSMTP,
+  verificarConexionSMTP,
   generarComprobantePDF,
   notificarEscuelaPorCorreo,
 };

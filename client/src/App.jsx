@@ -23,9 +23,22 @@ import DirectivoPanel from './views/directivo/DirectivoPanel';
 import LandingPageView from './views/landing/LandingPageView';
 import SolicitudRegistroModal from './views/landing/SolicitudRegistroModal';
 
+// Pantalla de Activación Segura de Cuenta de Directivo
+import ActivacionView from './views/ActivacionView';
+
 export default function App() {
   const { user, isAuthenticated, loading, logout, isDirectivo } = useAuth();
   const { showToast } = useToast();
+
+  // Detección de token de activación en URL (ej: /?activacion=abcdef123...)
+  const [activationToken, setActivationToken] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('activacion') || null;
+    } catch {
+      return null;
+    }
+  });
 
   // Estado para la navegación pública (cuando no está autenticado)
   // 'landing' -> Muestra la nueva Landing Page de bienvenida
@@ -106,6 +119,21 @@ export default function App() {
         <h2 className="text-base font-bold text-vino-dark tracking-wide">SICARA</h2>
         <p className="text-xs text-app-muted mt-1">Cargando sistema de administración rural...</p>
       </div>
+    );
+  }
+
+  // Si existe un token de activación en la URL (ej: /?activacion=...)
+  // y el usuario aún no está autenticado, renderizar directamente ActivacionView
+  if (activationToken && !isAuthenticated) {
+    return (
+      <ActivacionView
+        token={activationToken}
+        onCancel={() => {
+          setActivationToken(null);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setPublicView('landing');
+        }}
+      />
     );
   }
 

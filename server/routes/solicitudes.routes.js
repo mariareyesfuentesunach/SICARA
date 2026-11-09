@@ -1,8 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const db = require('../config/db');
 const { authMiddleware } = require('../middleware/auth');
-const { notificarEscuelaPorCorreo } = require('../utils/email');
+const { notificarEscuelaPorCorreo, verificarConexionSMTP } = require('../utils/email');
 const { consultarCodigoPostal, validarColoniaParaCP } = require('../utils/sepomex');
 
 const router = express.Router();
@@ -375,8 +376,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/solicitudes/:id/aprobar - Aprobar solicitud (Disponible para cualquier Administrador General activo)
-router.put('/:id/aprobar', authMiddleware, async (req, res) => {
+// PUT y POST /api/solicitudes/:id/aprobar - Aprobar solicitud (Disponible para cualquier Administrador General activo)
+const aprobarSolicitudHandler = async (req, res) => {
   const client = await db.pool.connect();
   try {
     const { id } = req.params;
@@ -397,7 +398,7 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
 
     const sol = solRes.rows[0];
 
-    if (sol.estado_solicitud === 'Aprobada') {
+    if ((sol.estado_solicitud || '').toLowerCase() === 'aprobada') {
       await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
@@ -479,7 +480,11 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
     );
 
     // 4. Crear o asociar usuario Directivo si tiene correo_responsable
+    let tokenActivacion = null;
     if (sol.correo_responsable) {
+      tokenActivacion = crypto.randomBytes(32).toString('hex');
+      const tokenExpira = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 horas de vigencia
+
       const userRes = await client.query(
         `SELECT id_usuario, rol FROM usuario WHERE LOWER(correo) = LOWER($1)`,
         [sol.correo_responsable]
@@ -492,22 +497,26 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
         if (existingUser.rol !== 'Administrador') {
           await client.query(
             `UPDATE usuario 
-             SET id_escuela = $1, rol = 'Directivo', estado = 'Activo'
-             WHERE id_usuario = $2`,
-            [id_escuela, existingUser.id_usuario]
+             SET id_escuela = $1, rol = 'Directivo', estado = 'Activo',
+                 token_activacion = $2, token_activacion_expira = $3
+             WHERE id_usuario = $4`,
+            [id_escuela, tokenActivacion, tokenExpira, existingUser.id_usuario]
           );
         }
       } else {
         await client.query(
           `INSERT INTO usuario (
-            id_escuela, nombre, apellidos, correo, contrasena, rol, estado, fecha_registro
-          ) VALUES ($1, $2, $3, $4, $5, 'Directivo', 'Activo', NOW())`,
+            id_escuela, nombre, apellidos, correo, contrasena, rol, estado, fecha_registro,
+            token_activacion, token_activacion_expira, cuenta_activada
+          ) VALUES ($1, $2, $3, $4, $5, 'Directivo', 'Activo', NOW(), $6, $7, FALSE)`,
           [
             id_escuela,
             sol.nombre_responsable || 'Directivo Responsable',
             '',
             sol.correo_responsable.toLowerCase(),
             passHash,
+            tokenActivacion,
+            tokenExpira,
           ]
         );
       }
@@ -527,6 +536,7 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
           ...sol,
           id_solicitud: id,
           admin_nombre: `${req.user.nombre} ${req.user.apellidos || ''}`.trim(),
+          token_activacion: tokenActivacion,
         },
       });
     }
@@ -546,10 +556,13 @@ router.put('/:id/aprobar', authMiddleware, async (req, res) => {
   } finally {
     client.release();
   }
-});
+};
 
-// PUT /api/solicitudes/:id/rechazar - Rechazar solicitud con motivo justificado (Cualquier Administrador General)
-router.put('/:id/rechazar', authMiddleware, async (req, res) => {
+router.put('/:id/aprobar', authMiddleware, aprobarSolicitudHandler);
+router.post('/:id/aprobar', authMiddleware, aprobarSolicitudHandler);
+
+// PUT y POST /api/solicitudes/:id/rechazar - Rechazar solicitud con motivo justificado (Cualquier Administrador General)
+const rechazarSolicitudHandler = async (req, res) => {
   try {
     const { id } = req.params;
     const { motivo_rechazo } = req.body;
@@ -574,7 +587,7 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
 
     const sol = solRes.rows[0];
 
-    if (sol.estado_solicitud === 'Rechazada') {
+    if ((sol.estado_solicitud || '').toLowerCase() === 'rechazada') {
       return res.status(400).json({
         success: false,
         message: 'Esta solicitud ya había sido rechazada previamente.',
@@ -622,6 +635,104 @@ router.put('/:id/rechazar', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error al rechazar solicitud:', error);
     return res.status(500).json({ success: false, message: 'Error interno al rechazar la solicitud.' });
+  }
+};
+
+router.put('/:id/rechazar', authMiddleware, rechazarSolicitudHandler);
+router.post('/:id/rechazar', authMiddleware, rechazarSolicitudHandler);
+
+// POST /api/solicitudes/:id/reenviar-correo - Reenviar correo de aprobación a escuela ya aprobada
+router.post('/:id/reenviar-correo', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const solRes = await db.query(
+      `SELECT * FROM solicitud_escuela WHERE id_solicitud = $1`,
+      [id]
+    );
+
+    if (solRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Solicitud no encontrada.' });
+    }
+
+    const sol = solRes.rows[0];
+
+    if ((sol.estado_solicitud || '').toLowerCase() !== 'aprobada') {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se puede reenviar el correo de aprobación para solicitudes que ya han sido aprobadas.',
+      });
+    }
+
+    const emailDest = sol.correo_responsable || sol.correo_institucional;
+    if (!emailDest) {
+      return res.status(400).json({
+        success: false,
+        message: 'La solicitud no cuenta con una dirección de correo válida para el responsable ni institucional.',
+      });
+    }
+
+    // Generar o refrescar token de activación para el responsable
+    let tokenActivacion = null;
+    if (sol.correo_responsable) {
+      tokenActivacion = crypto.randomBytes(32).toString('hex');
+      const tokenExpira = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 horas de vigencia
+
+      await db.query(
+        `UPDATE usuario 
+         SET token_activacion = $1, token_activacion_expira = $2 
+         WHERE LOWER(correo) = LOWER($3) AND rol = 'Directivo'`,
+        [tokenActivacion, tokenExpira, sol.correo_responsable]
+      );
+    }
+
+    const emailStatus = await notificarEscuelaPorCorreo({
+      destinatario: emailDest,
+      nombreEscuela: sol.nombre_escuela,
+      estado: 'Aprobada',
+      solicitudData: {
+        ...sol,
+        id_solicitud: id,
+        admin_nombre: `${req.user.nombre} ${req.user.apellidos || ''}`.trim(),
+        token_activacion: tokenActivacion,
+      },
+    });
+
+    if (emailStatus && emailStatus.sent) {
+      return res.json({
+        success: true,
+        message: `Correo de aprobación reenviado exitosamente a ${emailDest}.`,
+        emailStatus,
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: `No se pudo enviar el correo: ${emailStatus?.error || 'Error desconocido del servidor SMTP.'}`,
+        emailStatus,
+      });
+    }
+  } catch (error) {
+    console.error('Error al reenviar correo de solicitud:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno al intentar reenviar la notificación por correo.',
+    });
+  }
+});
+
+// GET /api/solicitudes/smtp/status - Comprobar conexión SMTP y estado del servicio
+router.get('/smtp/status', authMiddleware, async (req, res) => {
+  try {
+    const status = await verificarConexionSMTP();
+    return res.json({
+      success: status.ok,
+      status,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Error al verificar la conexión SMTP.',
+    });
   }
 });
 
