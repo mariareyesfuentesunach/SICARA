@@ -68,8 +68,44 @@ function directivoMiddleware(req, res, next) {
   }
 }
 
+/**
+ * Middleware para rutas exclusivas de Docente
+ */
+function docenteMiddleware(req, res, next) {
+  try {
+    const authHeader = req.headers['authorization'];
+    const queryToken = req.query.token;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (authHeader || queryToken);
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Acceso no autorizado: Token no proporcionado.' });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ success: false, message: 'Sesión inválida o expirada. Por favor inicie sesión de nuevo.' });
+      }
+
+      if (decoded.rol !== 'Docente') {
+        return res.status(403).json({ success: false, message: 'Acceso denegado: Se requieren privilegios de Docente.' });
+      }
+
+      if (!decoded.id_escuela) {
+        return res.status(403).json({ success: false, message: 'Acceso denegado: La cuenta de Docente no tiene una escuela asociada.' });
+      }
+
+      req.user = decoded;
+      next();
+    });
+  } catch (error) {
+    console.error('Error en docenteMiddleware:', error);
+    return res.status(500).json({ success: false, message: 'Error interno en verificación de autorización.' });
+  }
+}
+
 module.exports = {
   authMiddleware,
   directivoMiddleware,
+  docenteMiddleware,
   JWT_SECRET,
 };

@@ -225,5 +225,166 @@ router.put('/:id/estado', authMiddleware, principalAdminOnly, async (req, res) =
   }
 });
 
+// ==========================================
+// SOLICITUDES DE AUTORIZACIÓN PARA ELIMINACIÓN DE ESCUELAS / DIRECTIVOS
+// ==========================================
+
+// POST /api/administradores/solicitudes-eliminacion - Emitir solicitud de eliminación (Administradores Secundarios)
+router.post('/solicitudes-eliminacion', authMiddleware, async (req, res) => {
+  try {
+    const { tipo_entidad, id_entidad, nombre_entidad, motivo } = req.body;
+
+    if (!tipo_entidad || !['Escuela', 'Directivo'].includes(tipo_entidad)) {
+      return res.status(400).json({ success: false, message: 'Tipo de entidad inválido (debe ser Escuela o Directivo).' });
+    }
+
+    if (!id_entidad || !nombre_entidad || !motivo || !motivo.trim()) {
+      return res.status(400).json({ success: false, message: 'Todos los campos son obligatorios, incluyendo el motivo detallado.' });
+    }
+
+    const insertRes = await db.query(
+      `INSERT INTO solicitud_eliminacion (
+        id_usuario_solicitante,
+        nombre_solicitante,
+        correo_solicitante,
+        tipo_entidad,
+        id_entidad,
+        nombre_entidad,
+        motivo,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pendiente')
+      RETURNING *`,
+      [
+        req.user.id_usuario,
+        req.user.nombre + ' ' + (req.user.apellidos || ''),
+        req.user.correo,
+        tipo_entidad,
+        id_entidad,
+        nombre_entidad.trim(),
+        motivo.trim(),
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Solicitud de autorización enviada con éxito al Administrador Principal para su dictamen.',
+      solicitud: insertRes.rows[0],
+    });
+  } catch (error) {
+    console.error('Error al crear solicitud de eliminación:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al enviar solicitud de eliminación.' });
+  }
+});
+
+// GET /api/administradores/solicitudes-eliminacion - Listar solicitudes (Principal ve todas; Secundario ve las suyas)
+router.get('/solicitudes-eliminacion', authMiddleware, async (req, res) => {
+  try {
+    const isPrincipal = Boolean(req.user.es_principal);
+
+    let query = `
+      SELECT s.*, u.nombre AS autor_nombre, u.correo AS autor_correo
+      FROM solicitud_eliminacion s
+      LEFT JOIN usuario u ON s.id_usuario_solicitante = u.id_usuario
+    `;
+    const params = [];
+
+    if (!isPrincipal) {
+      params.push(req.user.id_usuario);
+      query += ` WHERE s.id_usuario_solicitante = $1`;
+    }
+
+    query += ` ORDER BY CASE WHEN s.estado = 'Pendiente' THEN 1 ELSE 2 END, s.fecha_solicitud DESC`;
+
+    const result = await db.query(query, params);
+    return res.json({
+      success: true,
+      solicitudes: result.rows,
+      currentUserIsPrincipal: isPrincipal,
+    });
+  } catch (error) {
+    console.error('Error al listar solicitudes de eliminación:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al consultar solicitudes de eliminación.' });
+  }
+});
+
+// PUT /api/administradores/solicitudes-eliminacion/:id/resolver - Dictaminar solicitud (Solo Administrador Principal)
+router.put('/solicitudes-eliminacion/:id/resolver', authMiddleware, principalAdminOnly, async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const { id } = req.params;
+    const { accion, observaciones } = req.body; // 'Aprobar' o 'Rechazar'
+
+    if (!['Aprobar', 'Rechazar'].includes(accion)) {
+      client.release();
+      return res.status(400).json({ success: false, message: 'Acción no válida (debe ser Aprobar o Rechazar).' });
+    }
+
+    const solCheck = await client.query(`SELECT * FROM solicitud_eliminacion WHERE id_solicitud = $1`, [id]);
+    if (solCheck.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ success: false, message: 'Solicitud no encontrada.' });
+    }
+
+    const solicitud = solCheck.rows[0];
+
+    if (solicitud.estado !== 'Pendiente') {
+      client.release();
+      return res.status(400).json({ success: false, message: `Esta solicitud ya fue dictaminada como "${solicitud.estado}".` });
+    }
+
+    await client.query('BEGIN');
+
+    if (accion === 'Aprobar') {
+      if (solicitud.tipo_entidad === 'Escuela') {
+        // Eliminar escuela en cascada
+        const escId = solicitud.id_entidad;
+        await client.query(`DELETE FROM calificacion WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1)`, [escId]);
+        await client.query(`DELETE FROM asistencia WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1) OR id_grupo IN (SELECT id_grupo FROM grupo WHERE id_escuela = $1)`, [escId]);
+        await client.query(`DELETE FROM rendimiento_academico WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1)`, [escId]);
+        await client.query(`DELETE FROM alerta WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM reporte WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM grupo_alumno WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1) OR id_grupo IN (SELECT id_grupo FROM grupo WHERE id_escuela = $1)`, [escId]);
+        await client.query(`DELETE FROM grupo_docente WHERE id_grupo IN (SELECT id_grupo FROM grupo WHERE id_escuela = $1) OR id_docente IN (SELECT id_docente FROM docentes WHERE id_escuela = $1)`, [escId]);
+        await client.query(`DELETE FROM alumnos WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM docentes WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM grupo WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM materia WHERE id_escuela = $1`, [escId]);
+        await client.query(`UPDATE solicitud_escuela SET id_escuela = NULL WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM usuario WHERE id_escuela = $1`, [escId]);
+        await client.query(`DELETE FROM escuelas WHERE id_escuela = $1`, [escId]);
+      } else if (solicitud.tipo_entidad === 'Directivo') {
+        const usrId = solicitud.id_entidad;
+        await client.query(`DELETE FROM usuario WHERE id_usuario = $1`, [usrId]);
+      }
+    }
+
+    const nuevoEstado = accion === 'Aprobar' ? 'Aprobada' : 'Rechazada';
+    const updRes = await client.query(
+      `UPDATE solicitud_eliminacion
+       SET estado = $1,
+           fecha_resolucion = CURRENT_TIMESTAMP,
+           resolucion_por = $2,
+           observaciones_resolucion = $3
+       WHERE id_solicitud = $4
+       RETURNING *`,
+      [nuevoEstado, req.user.nombre + ' ' + (req.user.apellidos || ''), observaciones || null, id]
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      success: true,
+      message: `Solicitud de eliminación ${nuevoEstado.toLowerCase()} exitosamente por el Administrador Principal.`,
+      solicitud: updRes.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al resolver solicitud de eliminación:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al procesar el dictamen de la solicitud.' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
 

@@ -846,12 +846,23 @@ router.post('/docente/verificar-curp', async (req, res) => {
       });
     }
 
-    // Verificar si la cuenta del docente está activa
-    if (doc.estado_usuario && doc.estado_usuario.toLowerCase() !== 'activo') {
+    // Regla de llave de acceso: el estado del registro docente DEBE ser 'Pendiente'
+    // Si está 'Inactivo', se le bloquea el acceso con el mensaje institucional
+    const estadoActual = (doc.estado_usuario || doc.estado_docente || '').toLowerCase();
+    if (estadoActual === 'inactivo') {
       return res.status(403).json({
         success: false,
         code: 'DOCENTE_INACTIVO',
         message: 'Su registro docente se encuentra inactivo. Comuníquese con la dirección de su plantel.',
+      });
+    }
+
+    // Si ya estuviera 'Activo' pero sin cuenta_activada, o en cualquier estado distinto a 'Pendiente'
+    if (estadoActual !== 'pendiente') {
+      return res.status(403).json({
+        success: false,
+        code: 'DOCENTE_NO_PENDIENTE',
+        message: 'Su registro docente no se encuentra en estado pendiente de verificación. Comuníquese con la dirección de su plantel.',
       });
     }
 
@@ -935,7 +946,7 @@ router.post('/docente/establecer-password', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passHash = await bcrypt.hash(contrasena, salt);
 
-    // Actualizar usuario: guardar contraseña, activar cuenta
+    // Actualizar usuario y registro en docentes: guardar contraseña, activar cuenta y establecer estado 'Activo'
     await db.query(
       `UPDATE usuario
        SET contrasena = $1,
@@ -943,6 +954,13 @@ router.post('/docente/establecer-password', async (req, res) => {
            estado = 'Activo'
        WHERE id_usuario = $2`,
       [passHash, user.id_usuario]
+    );
+
+    await db.query(
+      `UPDATE docentes
+       SET estado = 'Activo'
+       WHERE id_usuario = $1`,
+      [user.id_usuario]
     );
 
     // Iniciar sesión automáticamente generando token JWT para el docente

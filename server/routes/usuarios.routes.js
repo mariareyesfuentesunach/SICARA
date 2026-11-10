@@ -392,4 +392,111 @@ router.post('/:id/reenviar-activacion', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/usuarios/:id/respaldo - Respaldo de información del directivo / usuario antes de eliminar
+router.get('/:id/respaldo', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const uRes = await db.query(
+      `SELECT u.id_usuario, u.id_escuela, u.nombre, u.apellidos, u.correo, u.rol, u.estado, u.fecha_registro,
+              e.nombre_escuela, e.cct, e.municipio, e.estado AS estado_geo
+       FROM usuario u
+       LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE u.id_usuario = $1`,
+      [id]
+    );
+
+    if (uRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+    }
+
+    const usuario = uRes.rows[0];
+    let escuelaInfo = null;
+
+    if (usuario.id_escuela && usuario.rol === 'Directivo') {
+      const gRes = await db.query(`SELECT COUNT(*)::int AS count FROM grupo WHERE id_escuela = $1`, [usuario.id_escuela]);
+      const aRes = await db.query(`SELECT COUNT(*)::int AS count FROM alumnos WHERE id_escuela = $1`, [usuario.id_escuela]);
+      const dRes = await db.query(`SELECT COUNT(*)::int AS count FROM docentes WHERE id_escuela = $1`, [usuario.id_escuela]);
+      escuelaInfo = {
+        nombre_escuela: usuario.nombre_escuela,
+        cct: usuario.cct,
+        total_grupos: gRes.rows[0].count,
+        total_alumnos: aRes.rows[0].count,
+        total_docentes: dRes.rows[0].count,
+      };
+    }
+
+    const backupData = {
+      meta: {
+        sistema: 'SICARA - Respaldo Individual de Usuario / Directivo',
+        fecha_generacion: new Date().toISOString(),
+        generado_por: req.user.nombre,
+      },
+      usuario,
+      escuela: escuelaInfo,
+    };
+
+    const cleanName = `${usuario.nombre}_${usuario.apellidos || ''}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `respaldo_usuario_${cleanName}_${new Date().toISOString().slice(0, 10)}.json`;
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(JSON.stringify(backupData, null, 2));
+  } catch (error) {
+    console.error('Error al generar respaldo de usuario:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al generar archivo de respaldo.' });
+  }
+});
+
+// DELETE /api/usuarios/:id - Eliminar directivo / usuario desde la BD (Solo Administrador Principal)
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Solo el Administrador Principal puede eliminar usuarios / directivos de la BD
+    if (!req.user || !req.user.es_principal) {
+      return res.status(403).json({
+        success: false,
+        code: 'REQUIERE_AUTORIZACION',
+        message:
+          'Operación restringida: Solo el Administrador Principal tiene autorización para eliminar cuentas directivas o administrativas de la base de datos.',
+      });
+    }
+
+    const check = await db.query(
+      `SELECT id_usuario, nombre, apellidos, rol, es_principal, id_escuela FROM usuario WHERE id_usuario = $1`,
+      [id]
+    );
+
+    if (check.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+    }
+
+    const target = check.rows[0];
+
+    // No se puede autoeliminar el Administrador Principal
+    if (target.es_principal) {
+      return res.status(403).json({
+        success: false,
+        message: 'Acción prohibida: No es posible eliminar la cuenta del Administrador Principal del sistema.',
+      });
+    }
+
+    // Si es docente vinculado, retirar registro de docentes
+    if (target.rol === 'Docente') {
+      await db.query(`DELETE FROM docentes WHERE id_usuario = $1`, [id]);
+    }
+
+    await db.query(`DELETE FROM usuario WHERE id_usuario = $1`, [id]);
+
+    return res.json({
+      success: true,
+      message: `El ${target.rol.toLowerCase()} "${target.nombre} ${target.apellidos || ''}" ha sido eliminado definitivamente de la base de datos.`,
+    });
+  } catch (error) {
+    console.error('Error en DELETE /api/usuarios/:id:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al eliminar usuario.', error: error.message });
+  }
+});
+
 module.exports = router;

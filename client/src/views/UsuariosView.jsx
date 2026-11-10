@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Pagination from '../components/Pagination';
+import EliminarEntidadAdminModal from '../components/admin/EliminarEntidadAdminModal';
 import {
   Users,
   Search,
@@ -12,6 +14,7 @@ import {
   ShieldCheck,
   UserCheck,
   Power,
+  Trash2,
   RefreshCw,
   School,
   Calendar,

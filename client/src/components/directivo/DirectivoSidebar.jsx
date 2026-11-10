@@ -12,6 +12,7 @@ import {
   LogOut,
   X,
   School,
+  UploadCloud,
 } from 'lucide-react';
 
 export default function DirectivoSidebar({
@@ -38,6 +39,7 @@ export default function DirectivoSidebar({
     { id: 'materias', label: 'Materias', icon: BookOpen },
     { id: 'rendimiento', label: 'Rendimiento académico', icon: TrendingUp },
     { id: 'reportes', label: 'Reportes', icon: FileText },
+    { id: 'importacion', label: 'Carga Masiva Escolar', icon: UploadCloud },
     { id: 'configuracion', label: 'Configuración institucional', icon: Settings },
   ];
 

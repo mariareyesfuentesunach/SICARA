@@ -19,6 +19,9 @@ import PerfilView from './views/PerfilView';
 // Módulo del Directivo Integrado
 import DirectivoPanel from './views/directivo/DirectivoPanel';
 
+// Módulo del Docente Integrado
+import DocentePanel from './views/docente/DocentePanel';
+
 // Nueva Landing Page Pública y Modal de Solicitud
 import LandingPageView from './views/landing/LandingPageView';
 import SolicitudRegistroModal from './views/landing/SolicitudRegistroModal';
@@ -33,7 +36,7 @@ import RecuperarPasswordView from './views/RecuperarPasswordView';
 import VerificarDocenteView from './views/VerificarDocenteView';
 
 export default function App() {
-  const { user, isAuthenticated, loading, logout, isDirectivo } = useAuth();
+  const { user, isAuthenticated, loading, logout, isDirectivo, isDocente } = useAuth();
   const { showToast } = useToast();
 
   // Detección de parámetros en URL (ej: /?activacion=..., /?login=true, /?recuperar=..., /?correo=...)
@@ -267,6 +270,11 @@ export default function App() {
   // Si el usuario autenticado tiene el rol DIRECTIVO -> Renderizar el Panel del Directivo
   if (isDirectivo) {
     return <DirectivoPanel />;
+  }
+
+  // Si el usuario autenticado tiene el rol DOCENTE -> Renderizar el Panel del Docente
+  if (isDocente) {
+    return <DocentePanel />;
   }
 
   // Si el usuario es ADMINISTRADOR GENERAL -> Mantener el Panel del Administrador General intacto

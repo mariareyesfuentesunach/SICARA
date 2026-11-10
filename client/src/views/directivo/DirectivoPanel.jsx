@@ -15,6 +15,7 @@ import DirectivoGruposView from './DirectivoGruposView';
 import DirectivoMateriasView from './DirectivoMateriasView';
 import DirectivoRendimientoView from './DirectivoRendimientoView';
 import DirectivoReportesView from './DirectivoReportesView';
+import DirectivoImportacionIntegralView from './DirectivoImportacionIntegralView';
 import DirectivoConfiguracionView from './DirectivoConfiguracionView';
 
 export default function DirectivoPanel() {
@@ -111,6 +112,10 @@ export default function DirectivoPanel() {
           {currentView === 'rendimiento' && <DirectivoRendimientoView escuela={escuela} />}
 
           {currentView === 'reportes' && <DirectivoReportesView escuela={escuela} />}
+
+          {currentView === 'importacion' && (
+            <DirectivoImportacionIntegralView escuela={escuela} />
+          )}
 
           {currentView === 'configuracion' && (
             <DirectivoConfiguracionView

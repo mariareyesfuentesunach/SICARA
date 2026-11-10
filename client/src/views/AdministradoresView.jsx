@@ -22,6 +22,12 @@ import {
   AlertCircle,
   KeyRound,
   ShieldAlert,
+  ClipboardList,
+  CheckCircle2,
+  XCircle,
+  Download,
+  FileText,
+  Clock,
 } from 'lucide-react';
 
 export default function AdministradoresView() {
@@ -33,6 +39,15 @@ export default function AdministradoresView() {
   const [actionLoading, setActionLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [isPrincipal, setIsPrincipal] = useState(false);
+
+  // Pestañas (Administradores / Solicitudes de Eliminación)
+  const [activeTab, setActiveTab] = useState('administradores');
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [loadingSolicitudes, setLoadingSolicitudes] = useState(false);
+  const [resolvingId, setResolvingId] = useState(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [solicitudToReject, setSolicitudToReject] = useState(null);
+  const [observacionesRechazo, setObservacionesRechazo] = useState('');
 
   // Modales
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -77,9 +92,101 @@ export default function AdministradoresView() {
     }
   }, [showToast]);
 
+  const fetchSolicitudes = useCallback(async () => {
+    setLoadingSolicitudes(true);
+    try {
+      const res = await api.getSolicitudesEliminacion();
+      if (res.success) {
+        setSolicitudes(res.solicitudes || []);
+      }
+    } catch (err) {
+      console.error('Error al consultar solicitudes de eliminación:', err);
+    } finally {
+      setLoadingSolicitudes(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAdministradores();
-  }, [fetchAdministradores]);
+    fetchSolicitudes();
+  }, [fetchAdministradores, fetchSolicitudes]);
+
+  const handleDescargarRespaldoSolicitud = async (solicitud) => {
+    try {
+      const token = localStorage.getItem('sicara_token');
+      const url =
+        solicitud.tipo_entidad === 'Escuela'
+          ? `/api/escuelas/${solicitud.id_entidad}/respaldo`
+          : `/api/usuarios/${solicitud.id_entidad}/respaldo`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error('No se pudo generar el respaldo de la base de datos.');
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `RESPALDO_BD_${solicitud.tipo_entidad.toUpperCase()}_${solicitud.id_entidad}_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      showToast('Respaldo descargado exitosamente.', 'success');
+    } catch (err) {
+      console.error('Error al descargar respaldo:', err);
+      showToast(err.message || 'Error al descargar respaldo.', 'error');
+    }
+  };
+
+  const handleAprobarSolicitud = async (solicitud) => {
+    if (!window.confirm(`¿Está seguro de APROBAR y ELIMINAR permanentemente ${solicitud.tipo_entidad}: "${solicitud.nombre_entidad}" de la base de datos? Esta acción es irreversible.`)) {
+      return;
+    }
+    setResolvingId(solicitud.id_solicitud);
+    try {
+      const res = await api.resolverSolicitudEliminacion(solicitud.id_solicitud, { accion: 'Aprobar' });
+      if (res.success) {
+        showToast(res.message || 'Solicitud aprobada y entidad eliminada de la base de datos.', 'success');
+        fetchSolicitudes();
+      }
+    } catch (err) {
+      console.error('Error al aprobar solicitud:', err);
+      showToast(err.message || 'Error al aprobar solicitud.', 'error');
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const handleOpenRechazar = (solicitud) => {
+    setSolicitudToReject(solicitud);
+    setObservacionesRechazo('');
+    setShowRejectModal(true);
+  };
+
+  const handleConfirmRechazo = async (e) => {
+    e.preventDefault();
+    if (!solicitudToReject) return;
+    setResolvingId(solicitudToReject.id_solicitud);
+    try {
+      const res = await api.resolverSolicitudEliminacion(solicitudToReject.id_solicitud, {
+        accion: 'Rechazar',
+        observaciones: observacionesRechazo,
+      });
+      if (res.success) {
+        showToast(res.message || 'Solicitud rechazada.', 'info');
+        setShowRejectModal(false);
+        setSolicitudToReject(null);
+        fetchSolicitudes();
+      }
+    } catch (err) {
+      console.error('Error al rechazar solicitud:', err);
+      showToast(err.message || 'Error al procesar rechazo.', 'error');
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   // Validaciones del formulario de creación
   const validateCreateForm = () => {
@@ -231,10 +338,46 @@ export default function AdministradoresView() {
     );
   });
 
+  const pendientesCount = solicitudes.filter((s) => s.estado === 'Pendiente').length;
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header & Acciones */}
-      <div className="bg-white rounded-card p-5 border border-app-border shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+      {/* Pestañas de Navegación */}
+      <div className="flex items-center gap-2 border-b border-app-border pb-2">
+        <button
+          onClick={() => setActiveTab('administradores')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-xs font-bold transition-colors cursor-pointer ${
+            activeTab === 'administradores'
+              ? 'bg-white text-vino-primary border-b-2 border-vino-primary shadow-xs'
+              : 'text-app-muted hover:text-vino-dark hover:bg-gray-100'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>Cuentas de Administradores ({administradores.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('solicitudes')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-t-lg text-xs font-bold transition-colors cursor-pointer relative ${
+            activeTab === 'solicitudes'
+              ? 'bg-white text-vino-primary border-b-2 border-vino-primary shadow-xs'
+              : 'text-app-muted hover:text-vino-dark hover:bg-gray-100'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>Solicitudes de Eliminación</span>
+          {pendientesCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-red-600 text-white animate-pulse">
+              {pendientesCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'administradores' ? (
+        <>
+          {/* Header & Acciones */}
+          <div className="bg-white rounded-card p-5 border border-app-border shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Título y badge */}
         <div>
           <div className="flex items-center gap-2.5">
@@ -469,6 +612,164 @@ export default function AdministradoresView() {
           </table>
         </div>
       </div>
+      </>
+      ) : (
+        /* VISTA: Pestaña de Solicitudes de Eliminación */
+        <div className="space-y-4">
+          <div className="bg-white rounded-card p-5 border border-app-border shadow-soft flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-app-text flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-vino-primary" />
+                Bandeja de Autorizaciones de Eliminación
+              </h2>
+              <p className="text-xs text-app-muted mt-0.5">
+                {isPrincipal
+                  ? 'Como Administrador Principal, dictamine las solicitudes de borrado definitivo en base de datos emitidas por administradores secundarios.'
+                  : 'Historial de solicitudes de borrado enviadas al Administrador Principal para su revisión.'}
+              </p>
+            </div>
+            <button
+              onClick={fetchSolicitudes}
+              disabled={loadingSolicitudes}
+              className="p-2 rounded-subtle border border-app-border text-app-muted hover:text-vino-primary hover:border-vino-primary transition-colors cursor-pointer"
+              title="Recargar solicitudes"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingSolicitudes ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <div className="bg-white rounded-card border border-app-border shadow-soft overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-app-bg/60 border-b border-app-border text-app-muted uppercase tracking-wider text-[11px] font-bold">
+                  <tr>
+                    <th className="py-3 px-4">Entidad Solicitada</th>
+                    <th className="py-3 px-4">Solicitante</th>
+                    <th className="py-3 px-4">Motivo del Borrado</th>
+                    <th className="py-3 px-4">Fecha</th>
+                    <th className="py-3 px-4">Estado</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-app-border/70">
+                  {loadingSolicitudes ? (
+                    <tr>
+                      <td colSpan="6" className="py-12 text-center text-app-muted">
+                        Cargando solicitudes de eliminación...
+                      </td>
+                    </tr>
+                  ) : solicitudes.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="py-12 text-center text-app-muted">
+                        No hay solicitudes de eliminación registradas.
+                      </td>
+                    </tr>
+                  ) : (
+                    solicitudes.map((sol) => (
+                      <tr key={sol.id_solicitud} className="hover:bg-vino-soft/20 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-app-text flex items-center gap-2">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                sol.tipo_entidad === 'Escuela'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-purple-100 text-purple-800'
+                              }`}
+                            >
+                              {sol.tipo_entidad}
+                            </span>
+                            <span>{sol.nombre_entidad}</span>
+                          </div>
+                          <span className="text-[11px] text-app-muted font-mono">ID: {sol.id_entidad}</span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-xs">
+                          <div className="font-semibold text-app-text">{sol.nombre_solicitante || 'Administrador'}</div>
+                          <div className="text-app-muted text-[11px]">{sol.correo_solicitante}</div>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-xs text-app-muted max-w-xs break-words">
+                          <p className="italic bg-gray-50 p-2 rounded border border-gray-200">
+                            "{sol.motivo}"
+                          </p>
+                          {sol.observaciones_resolucion && (
+                            <p className="text-[10px] text-red-600 mt-1">
+                              <strong>Dictamen:</strong> {sol.observaciones_resolucion}
+                            </p>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-xs text-app-muted">
+                          {sol.fecha_solicitud
+                            ? new Date(sol.fecha_solicitud).toLocaleDateString('es-MX', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                            : '-'}
+                        </td>
+
+                        <td className="py-3.5 px-4">
+                          <span
+                            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                              sol.estado === 'Pendiente'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : sol.estado === 'Aprobada'
+                                ? 'bg-green-100 text-green-800 border border-green-300'
+                                : 'bg-red-100 text-red-800 border border-red-300'
+                            }`}
+                          >
+                            {sol.estado}
+                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            {/* Descargar respaldo si está pendiente */}
+                            {sol.estado === 'Pendiente' && (
+                              <button
+                                onClick={() => handleDescargarRespaldoSolicitud(sol)}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-subtle border border-app-border text-gray-700 hover:text-vino-primary hover:border-vino-primary flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Descargar Respaldo JSON de la BD"
+                              >
+                                <Download className="w-3.5 h-3.5 text-vino-primary" />
+                                <span>Respaldo</span>
+                              </button>
+                            )}
+
+                            {isPrincipal && sol.estado === 'Pendiente' && (
+                              <>
+                                <button
+                                  onClick={() => handleAprobarSolicitud(sol)}
+                                  disabled={resolvingId === sol.id_solicitud}
+                                  className="px-2.5 py-1 text-xs font-bold rounded-subtle bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                                  title="Aprobar y Eliminar de la Base de Datos"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Aprobar Borrado</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenRechazar(sol)}
+                                  disabled={resolvingId === sol.id_solicitud}
+                                  className="px-2.5 py-1 text-xs font-bold rounded-subtle border border-gray-300 hover:bg-gray-100 text-gray-700 flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                                  title="Rechazar solicitud"
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-gray-500" />
+                                  <span>Rechazar</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: Guardar Administrador Adicional (Ventana Flotante Amplia como Solicitudes de Escuelas) */}
       <Modal
@@ -769,6 +1070,61 @@ export default function AdministradoresView() {
         isDanger={adminToToggle?.estado === 'Activo'}
         isLoading={actionLoading}
       />
+
+      {/* MODAL: Rechazar Solicitud de Eliminación */}
+      {showRejectModal && solicitudToReject && (
+        <Modal
+          isOpen={showRejectModal}
+          onClose={() => {
+            setShowRejectModal(false);
+            setSolicitudToReject(null);
+          }}
+          title="Rechazar Solicitud de Eliminación"
+          subtitle={`Se notificará el motivo del rechazo al solicitante (${solicitudToReject.nombre_solicitante || 'Administrador'})`}
+          maxWidth="max-w-md"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setSolicitudToReject(null);
+                }}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRechazo}
+                disabled={resolvingId === solicitudToReject.id_solicitud}
+                className="px-4 py-2 rounded-subtle bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {resolvingId === solicitudToReject.id_solicitud ? 'Rechazando...' : 'Confirmar Rechazo'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-xs">
+            <p className="text-app-text">
+              Indique las razones u observaciones por las cuales no procede la eliminación de{' '}
+              <strong>{solicitudToReject.tipo_entidad}</strong>: <em>{solicitudToReject.nombre_entidad}</em>.
+            </p>
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Motivo / Justificación del Rechazo:
+              </label>
+              <textarea
+                value={observacionesRechazo}
+                onChange={(e) => setObservacionesRechazo(e.target.value)}
+                placeholder="Ejemplo: La escuela cuenta con trámites y registros activos del ciclo actual..."
+                rows={3}
+                className="w-full p-2.5 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

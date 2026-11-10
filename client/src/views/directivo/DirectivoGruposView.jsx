@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
 import CsvImportSection from '../../components/directivo/CsvImportSection';
+import EliminarModalDirectivo from '../../components/directivo/EliminarModalDirectivo';
 import {
   Layers,
   PlusCircle,
@@ -48,6 +49,31 @@ export default function DirectivoGruposView({ escuela }) {
   const [alumnosDisponibles, setAlumnosDisponibles] = useState([]);
   const [selectedAlumnoToEnroll, setSelectedAlumnoToEnroll] = useState('');
   const [enrolling, setEnrolling] = useState(false);
+
+  // Modal Eliminación Lógica
+  const [grupoToDelete, setGrupoToDelete] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDeleteGrupo = async () => {
+    if (!grupoToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const res = await api.deleteDirectivoGrupo(grupoToDelete.id_grupo);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setShowDeleteModal(false);
+        setGrupoToDelete(null);
+        fetchGrupos();
+      } else {
+        showToast(res.message || 'Error al eliminar grupo.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error de comunicación al eliminar grupo.', 'error');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const primaryColor = escuela?.color_primario || '#722F37';
 
@@ -327,6 +353,16 @@ export default function DirectivoGruposView({ escuela }) {
                   title="Editar grupo"
                 >
                   <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    setGrupoToDelete(grp);
+                    setShowDeleteModal(true);
+                  }}
+                  className="p-1.5 rounded-subtle hover:bg-rose-50 text-app-muted hover:text-rose-600 cursor-pointer transition-colors"
+                  title="Eliminar grupo del sistema"
+                >
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -633,6 +669,20 @@ export default function DirectivoGruposView({ escuela }) {
           </div>
         )}
       </Modal>
+
+      {/* Modal de Eliminación Lógica con Advertencia de Dependencias */}
+      <EliminarModalDirectivo
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setGrupoToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteGrupo}
+        tipo="grupo"
+        id={grupoToDelete?.id_grupo}
+        nombre={grupoToDelete?.nombre_grupo}
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }

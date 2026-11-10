@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Pagination from '../components/Pagination';
+import EliminarEntidadAdminModal from '../components/admin/EliminarEntidadAdminModal';
 import {
   School,
   Search,
@@ -12,6 +14,7 @@ import {
   Eye,
   Edit,
   Power,
+  Trash2,
   RefreshCw,
   Users,
   GraduationCap,
@@ -25,6 +28,7 @@ import {
 } from 'lucide-react';
 
 export default function EscuelasView() {
+  const { user } = useAuth();
   const { showToast } = useToast();
 
   const [escuelas, setEscuelas] = useState([]);
@@ -37,6 +41,11 @@ export default function EscuelasView() {
   const [estadoFilter, setEstadoFilter] = useState('todas');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Modal Eliminación y Respaldo
+  const [escuelaToDelete, setEscuelaToDelete] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Modales
   const [selectedEscuela, setSelectedEscuela] = useState(null);
@@ -170,6 +179,44 @@ export default function EscuelasView() {
       showToast(err.message || 'Error al cambiar estado de la escuela.', 'error');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Eliminación de Escuela (Principal elimina directo; Secundario envía solicitud)
+  const handleConfirmDeleteDirecto = async (idEscuela) => {
+    setDeleteLoading(true);
+    try {
+      const res = await api.deleteEscuela(idEscuela);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setShowDeleteModal(false);
+        setEscuelaToDelete(null);
+        fetchEscuelas();
+      } else {
+        showToast(res.message || 'Error al eliminar escuela.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error de comunicación al eliminar escuela.', 'error');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleSolicitarAutorizacion = async (payload) => {
+    setDeleteLoading(true);
+    try {
+      const res = await api.solicitarEliminacion(payload);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setShowDeleteModal(false);
+        setEscuelaToDelete(null);
+      } else {
+        showToast(res.message || 'Error al enviar solicitud.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al procesar solicitud.', 'error');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -327,6 +374,20 @@ export default function EscuelasView() {
                           title={esc.estado_escuela === 'Activa' ? 'Inactivar escuela' : 'Activar escuela'}
                         >
                           <Power className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEscuelaToDelete(esc);
+                            setShowDeleteModal(true);
+                          }}
+                          className="p-1.5 rounded-subtle text-app-muted hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title={
+                            user?.es_principal
+                              ? 'Eliminar escuela de la base de datos'
+                              : 'Solicitar autorización para eliminar escuela'
+                          }
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -577,6 +638,21 @@ export default function EscuelasView() {
         confirmText={escuelaToToggle?.estado_escuela === 'Activa' ? 'Inactivar' : 'Activar'}
         isDanger={escuelaToToggle?.estado_escuela === 'Activa'}
         isLoading={actionLoading}
+      />
+
+      {/* Modal Eliminación / Autorización con Opción de Respaldo */}
+      <EliminarEntidadAdminModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setEscuelaToDelete(null);
+        }}
+        tipo="Escuela"
+        entidad={escuelaToDelete}
+        isPrincipal={Boolean(user?.es_principal)}
+        onEliminarDirecto={handleConfirmDeleteDirecto}
+        onSolicitarAutorizacion={handleSolicitarAutorizacion}
+        isLoading={deleteLoading}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { parseCSV, downloadCSVTemplate } from '../../utils/csvParser';
+import { parseSpreadsheetFile, downloadCSVTemplate, downloadXLSXTemplate } from '../../utils/csvParser';
 import {
   FileSpreadsheet,
   Download,
@@ -33,15 +33,26 @@ export default function CsvImportSection({
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
-  const handleDownloadTemplate = () => {
-    downloadCSVTemplate(templateFilename, templateHeaders, sampleRows);
+  const handleDownloadTemplate = (format = 'xlsx') => {
+    if (format === 'xlsx') {
+      downloadXLSXTemplate(templateFilename, templateHeaders, sampleRows);
+    } else {
+      downloadCSVTemplate(templateFilename, templateHeaders, sampleRows);
+    }
   };
 
-  const handleFileProcess = (selectedFile) => {
+  const handleFileProcess = async (selectedFile) => {
     if (!selectedFile) return;
 
-    if (!selectedFile.name.endsWith('.csv') && !selectedFile.name.endsWith('.txt')) {
-      setParseError('Por favor seleccione un archivo con formato .CSV (valores separados por coma o punto y coma de Excel).');
+    const lowerName = selectedFile.name.toLowerCase();
+    const isSupported =
+      lowerName.endsWith('.xlsx') ||
+      lowerName.endsWith('.xls') ||
+      lowerName.endsWith('.csv') ||
+      lowerName.endsWith('.txt');
+
+    if (!isSupported) {
+      setParseError('Por favor seleccione un archivo con formato Excel (.XLSX / .XLS) o .CSV.');
       return;
     }
 
@@ -49,26 +60,18 @@ export default function CsvImportSection({
     setImportResult(null);
     setFile(selectedFile);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result;
-        const rows = parseCSV(text);
-        if (rows.length === 0) {
-          setParseError('El archivo CSV está vacío o no contiene filas de datos después de la cabecera.');
-          setParsedData([]);
-        } else {
-          setParsedData(rows);
-        }
-      } catch (err) {
-        setParseError(`Error al procesar el archivo: ${err.message}`);
+    try {
+      const rows = await parseSpreadsheetFile(selectedFile);
+      if (rows.length === 0) {
+        setParseError('El archivo está vacío o no contiene filas de datos después de la cabecera.');
         setParsedData([]);
+      } else {
+        setParsedData(rows);
       }
-    };
-    reader.onerror = () => {
-      setParseError('No fue posible leer el archivo seleccionado.');
-    };
-    reader.readAsText(selectedFile, 'UTF-8');
+    } catch (err) {
+      setParseError(`Error al procesar el archivo: ${err.message}`);
+      setParsedData([]);
+    }
   };
 
   const handleDrop = (e) => {
@@ -117,21 +120,31 @@ export default function CsvImportSection({
             <FileSpreadsheet className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="font-bold text-app-text text-xs">Plantilla oficial para Excel (.CSV)</h4>
+            <h4 className="font-bold text-app-text text-xs">Plantilla oficial para Excel (.xlsx) o .CSV</h4>
             <p className="text-[11px] text-app-muted leading-relaxed">
               Descargue el archivo de ejemplo para llenarlo con sus datos en Microsoft Excel o Google Sheets.
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleDownloadTemplate}
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-subtle bg-white border border-vino-primary text-vino-primary hover:bg-vino-soft text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Descargar Plantilla</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleDownloadTemplate('xlsx')}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-subtle bg-white border border-vino-primary text-vino-primary hover:bg-vino-soft text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Plantilla Excel (.xlsx)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownloadTemplate('csv')}
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-subtle bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold transition-all shadow-xs cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5 text-gray-500" />
+            <span>.CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* Guía de columnas requeridas */}
@@ -166,7 +179,7 @@ export default function CsvImportSection({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv, text/csv, text/plain"
+            accept=".xlsx, .xls, .csv, text/csv, text/plain, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
             className="hidden"
             onChange={(e) => {
               if (e.target.files && e.target.files[0]) {
@@ -178,10 +191,10 @@ export default function CsvImportSection({
             <UploadCloud className="w-6 h-6" />
           </div>
           <p className="font-bold text-app-text text-xs">
-            Haga clic para seleccionar o arrastre su archivo CSV aquí
+            Haga clic para seleccionar o arrastre su archivo Excel (.xlsx / .xls) o CSV aquí
           </p>
           <p className="text-[11px] text-app-muted">
-            Formatos soportados: CSV con separación por coma (,) o punto y coma (;)
+            Formatos soportados: Libro de Microsoft Excel (.xlsx, .xls) o archivo de texto .CSV
           </p>
         </div>
       ) : (

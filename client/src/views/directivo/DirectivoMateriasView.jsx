@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
 import CsvImportSection from '../../components/directivo/CsvImportSection';
+import EliminarModalDirectivo from '../../components/directivo/EliminarModalDirectivo';
 import {
   BookOpen,
   PlusCircle,
@@ -54,6 +55,31 @@ export default function DirectivoMateriasView({ escuela }) {
     id_grupo: '',
     id_docente: '',
   });
+
+  // Modal Eliminación Lógica
+  const [materiaToDelete, setMateriaToDelete] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDeleteMateria = async () => {
+    if (!materiaToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const res = await api.deleteDirectivoMateria(materiaToDelete.id_materia);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setShowDeleteModal(false);
+        setMateriaToDelete(null);
+        fetchData();
+      } else {
+        showToast(res.message || 'Error al eliminar materia.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error de comunicación al eliminar materia.', 'error');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const primaryColor = escuela?.color_primario || '#722F37';
 
@@ -546,6 +572,16 @@ export default function DirectivoMateriasView({ escuela }) {
                                   >
                                     <Edit2 className="w-4 h-4" />
                                   </button>
+                                  <button
+                                    onClick={() => {
+                                      setMateriaToDelete(m);
+                                      setShowDeleteModal(true);
+                                    }}
+                                    className="p-1.5 rounded-subtle hover:bg-rose-50 text-app-muted hover:text-rose-600 transition-colors cursor-pointer"
+                                    title="Eliminar materia del sistema"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -786,6 +822,20 @@ export default function DirectivoMateriasView({ escuela }) {
           </div>
         </form>
       </Modal>
+
+      {/* Modal de Eliminación Lógica con Advertencia de Dependencias */}
+      <EliminarModalDirectivo
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setMateriaToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteMateria}
+        tipo="materia"
+        id={materiaToDelete?.id_materia}
+        nombre={materiaToDelete?.nombre_materia}
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }

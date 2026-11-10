@@ -18,6 +18,7 @@ export default function DirectivoNavbar({
     materias: 'Catálogo de Materias y Asignaciones',
     rendimiento: 'Rendimiento Académico y Asistencia',
     reportes: 'Generador de Reportes Institucionales',
+    importacion: 'Carga Masiva e Integral de la Escuela',
     configuracion: 'Configuración Institucional e Identidad',
   };
 

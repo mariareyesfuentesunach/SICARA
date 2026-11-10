@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
 import CsvImportSection from '../../components/directivo/CsvImportSection';
+import EliminarModalDirectivo from '../../components/directivo/EliminarModalDirectivo';
 import {
   Users,
   UserPlus,
@@ -11,6 +12,7 @@ import {
   RefreshCw,
   Edit2,
   Eye,
+  Trash2,
   FileText,
   Calendar,
   AlertTriangle,
@@ -48,6 +50,31 @@ export default function DirectivoAlumnosView({ escuela }) {
   const [historialAlumno, setHistorialAlumno] = useState(null);
   const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
+
+  // Modal Eliminación Lógica
+  const [alumnoToDelete, setAlumnoToDelete] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDeleteAlumno = async () => {
+    if (!alumnoToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const res = await api.deleteDirectivoAlumno(alumnoToDelete.id_alumno);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setShowDeleteModal(false);
+        setAlumnoToDelete(null);
+        fetchData();
+      } else {
+        showToast(res.message || 'Error al eliminar alumno del sistema.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error de comunicación al eliminar alumno.', 'error');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const primaryColor = escuela?.color_primario || '#722F37';
 
@@ -299,6 +326,16 @@ export default function DirectivoAlumnosView({ escuela }) {
                           title="Editar información"
                         >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAlumnoToDelete(al);
+                            setShowDeleteModal(true);
+                          }}
+                          className="p-1.5 rounded-subtle hover:bg-rose-50 text-app-muted hover:text-rose-600 transition-colors cursor-pointer"
+                          title="Eliminar del sistema"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -628,6 +665,20 @@ export default function DirectivoAlumnosView({ escuela }) {
           </div>
         )}
       </Modal>
+
+      {/* Modal de Eliminación Lógica con Advertencia de Dependencias */}
+      <EliminarModalDirectivo
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setAlumnoToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteAlumno}
+        tipo="alumno"
+        id={alumnoToDelete?.id_alumno}
+        nombre={alumnoToDelete ? `${alumnoToDelete.nombre} ${alumnoToDelete.apellidos || ''}` : ''}
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }

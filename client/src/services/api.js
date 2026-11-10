@@ -138,6 +138,10 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ estado_escuela }),
     }),
+  deleteEscuela: (id) =>
+    request(`/escuelas/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Usuarios (Admin General)
   getUsuarios: (params = {}) => {
@@ -163,6 +167,10 @@ export const api = {
     request(`/usuarios/${id}/reenviar-activacion`, {
       method: 'POST',
     }),
+  deleteUsuario: (id) =>
+    request(`/usuarios/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Administradores
   getAdministradores: () => request('/administradores'),
@@ -180,6 +188,17 @@ export const api = {
     request(`/administradores/${id}/estado`, {
       method: 'PUT',
       body: JSON.stringify({ estado }),
+    }),
+  solicitarEliminacion: (data) =>
+    request('/administradores/solicitudes-eliminacion', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getSolicitudesEliminacion: () => request('/administradores/solicitudes-eliminacion'),
+  resolverSolicitudEliminacion: (id, data) =>
+    request(`/administradores/solicitudes-eliminacion/${id}/resolver`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 
   // Notificaciones de Solicitudes de Escuelas
@@ -222,6 +241,10 @@ export const api = {
       body: JSON.stringify(data),
     }),
   getDirectivoAlumnoHistorial: (id) => request(`/directivo/alumnos/${id}/historial`),
+  deleteDirectivoAlumno: (id) =>
+    request(`/directivo/alumnos/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Docentes
   getDirectivoDocentes: (params = {}) => {
@@ -239,6 +262,10 @@ export const api = {
       body: JSON.stringify(data),
     }),
   getDirectivoDocenteAsignaciones: (id) => request(`/directivo/docentes/${id}/asignaciones`),
+  deleteDirectivoDocente: (id) =>
+    request(`/directivo/docentes/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Grupos
   getDirectivoGrupos: (params = {}) => {
@@ -263,6 +290,10 @@ export const api = {
     }),
   desvincularAlumnoGrupo: (idGrupo, idAlumno) =>
     request(`/directivo/grupos/${idGrupo}/alumnos/${idAlumno}`, {
+      method: 'DELETE',
+    }),
+  deleteDirectivoGrupo: (id) =>
+    request(`/directivo/grupos/${id}`, {
       method: 'DELETE',
     }),
 
@@ -290,6 +321,11 @@ export const api = {
     request(`/directivo/asignaciones/${id}`, {
       method: 'DELETE',
     }),
+  deleteDirectivoMateria: (id) =>
+    request(`/directivo/materias/${id}`, {
+      method: 'DELETE',
+    }),
+  getDirectivoDependencias: (tipo, id) => request(`/directivo/dependencias/${tipo}/${id}`),
 
   // Alertas
   getDirectivoAlertas: (params = {}) => {
@@ -350,6 +386,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ materias }),
     }),
+  importarEscuelaIntegral: (data) =>
+    request('/directivo/importar-integral', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   // Reenviar correo de alta al docente
   reenviarCorreoDocente: (id_docente) =>
@@ -365,6 +406,49 @@ export const api = {
     }),
   establecerPasswordDocente: (data) =>
     request('/auth/docente/establecer-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // ==========================================
+  // APIS DEL MÓDULO DEL DOCENTE
+  // ==========================================
+  getDocenteContexto: () => request('/docente/contexto'),
+  getDocenteDashboard: () => request('/docente/dashboard'),
+  getDocenteAsistencia: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/docente/asistencia?${query}`);
+  },
+  guardarDocenteAsistencia: (data) =>
+    request('/docente/asistencia', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getDocenteCalificaciones: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/docente/calificaciones?${query}`);
+  },
+  guardarDocenteCalificaciones: (data) =>
+    request('/docente/calificaciones', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getDocenteBoletaGrupo: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/docente/boleta-grupo?${query}`);
+  },
+  getDocenteAlertas: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/docente/alertas?${query}`);
+  },
+  resolverDocenteAlerta: (id, data) =>
+    request(`/docente/alertas/${id}/resolver`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getDocenteReportes: () => request('/docente/reportes'),
+  crearDocenteReporte: (data) =>
+    request('/docente/reportes', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

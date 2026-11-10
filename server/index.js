@@ -12,6 +12,7 @@ const usuariosRoutes = require('./routes/usuarios.routes');
 const notificacionesRoutes = require('./routes/notificaciones.routes');
 const administradoresRoutes = require('./routes/administradores.routes');
 const directivoRoutes = require('./routes/directivo.routes');
+const docenteRoutes = require('./routes/docente.routes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,6 +31,7 @@ app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
 app.use('/api/administradores', administradoresRoutes);
 app.use('/api/directivo', directivoRoutes);
+app.use('/api/docente', docenteRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

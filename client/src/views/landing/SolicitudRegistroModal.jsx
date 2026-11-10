@@ -307,10 +307,9 @@ export default function SolicitudRegistroModal({ isOpen, onClose }) {
                   onChange={(e) => setFormData({ ...formData, nivel_educativo: e.target.value })}
                   className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs bg-white"
                 >
-                  <option value="Preescolar">Preescolar</option>
                   <option value="Primaria">Primaria</option>
                   <option value="Secundaria">Secundaria</option>
-                  <option value="Telesecundaria">Telesecundaria</option>
+                  <option value="Preparatoria">Preparatoria</option>
                 </select>
               </div>
 

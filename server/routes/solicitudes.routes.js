@@ -324,8 +324,8 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 7. Validar Nivel Educativo y Turno permitidos
-    const validNiveles = ['Preescolar', 'Primaria', 'Secundaria', 'Telesecundaria'];
+    // 7. Validar Nivel Educativo y Turno permitidos (Solo Primaria, Secundaria y Preparatoria)
+    const validNiveles = ['Primaria', 'Secundaria', 'Preparatoria'];
     const nivelFinal = validNiveles.includes(nivel_educativo) ? nivel_educativo : 'Primaria';
 
     const validTurnos = ['Matutino', 'Vespertino', 'Completo'];

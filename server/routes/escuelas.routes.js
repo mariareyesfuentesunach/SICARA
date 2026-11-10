@@ -238,5 +238,216 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/escuelas/:id/respaldo - Generar y descargar respaldo completo de la escuela antes de eliminar
+router.get('/:id/respaldo', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const escRes = await db.query(`SELECT * FROM escuelas WHERE id_escuela = $1`, [id]);
+    if (escRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Escuela no encontrada.' });
+    }
+    const escuela = escRes.rows[0];
+
+    // Usuarios y Directivo
+    const usuariosRes = await db.query(
+      `SELECT id_usuario, nombre, apellidos, correo, rol, estado, fecha_registro, cuenta_activada
+       FROM usuario WHERE id_escuela = $1`,
+      [id]
+    );
+
+    // Docentes
+    const docentesRes = await db.query(
+      `SELECT d.*, u.nombre, u.apellidos, u.correo
+       FROM docentes d
+       JOIN usuario u ON d.id_usuario = u.id_usuario
+       WHERE d.id_escuela = $1`,
+      [id]
+    );
+
+    // Grupos
+    const gruposRes = await db.query(`SELECT * FROM grupo WHERE id_escuela = $1`, [id]);
+
+    // Alumnos
+    const alumnosRes = await db.query(`SELECT * FROM alumnos WHERE id_escuela = $1`, [id]);
+
+    // Materias
+    const materiasRes = await db.query(`SELECT * FROM materia WHERE id_escuela = $1`, [id]);
+
+    // Asignaciones grupo_docente
+    const asignacionesRes = await db.query(
+      `SELECT gd.*, g.nombre_grupo, m.nombre_materia, u.nombre AS docente_nombre
+       FROM grupo_docente gd
+       JOIN grupo g ON gd.id_grupo = g.id_grupo
+       JOIN materia m ON gd.id_materia = m.id_materia
+       JOIN docentes d ON gd.id_docente = d.id_docente
+       JOIN usuario u ON d.id_usuario = u.id_usuario
+       WHERE g.id_escuela = $1`,
+      [id]
+    );
+
+    // Calificaciones
+    const calificacionesRes = await db.query(
+      `SELECT c.*, a.nombre AS alumno_nombre, a.apellidos AS alumno_apellidos, m.nombre_materia
+       FROM calificacion c
+       JOIN alumnos a ON c.id_alumno = a.id_alumno
+       JOIN materia m ON c.id_materia = m.id_materia
+       WHERE a.id_escuela = $1`,
+      [id]
+    );
+
+    // Asistencias
+    const asistenciasRes = await db.query(
+      `SELECT asi.*, a.nombre AS alumno_nombre, a.apellidos AS alumno_apellidos, g.nombre_grupo
+       FROM asistencia asi
+       JOIN alumnos a ON asi.id_alumno = a.id_alumno
+       LEFT JOIN grupo g ON asi.id_grupo = g.id_grupo
+       WHERE a.id_escuela = $1`,
+      [id]
+    );
+
+    // Alertas y Reportes
+    const alertasRes = await db.query(`SELECT * FROM alerta WHERE id_escuela = $1`, [id]);
+    const reportesRes = await db.query(`SELECT * FROM reporte WHERE id_escuela = $1`, [id]);
+
+    const backupData = {
+      meta: {
+        sistema: 'SICARA - Sistema de Control y Rendimiento Académico',
+        tipo_respaldo: 'Respaldo Institucional Completo de Escuela',
+        fecha_generacion: new Date().toISOString(),
+        generado_por: {
+          id_usuario: req.user.id_usuario,
+          nombre: req.user.nombre,
+          correo: req.user.correo,
+          es_principal: req.user.es_principal,
+        },
+      },
+      escuela,
+      estadisticas: {
+        total_usuarios: usuariosRes.rows.length,
+        total_docentes: docentesRes.rows.length,
+        total_grupos: gruposRes.rows.length,
+        total_alumnos: alumnosRes.rows.length,
+        total_materias: materiasRes.rows.length,
+        total_calificaciones: calificacionesRes.rows.length,
+        total_asistencias: asistenciasRes.rows.length,
+      },
+      usuarios: usuariosRes.rows,
+      docentes: docentesRes.rows,
+      grupos: gruposRes.rows,
+      alumnos: alumnosRes.rows,
+      materias: materiasRes.rows,
+      asignaciones: asignacionesRes.rows,
+      calificaciones: calificacionesRes.rows,
+      asistencias: asistenciasRes.rows,
+      alertas: alertasRes.rows,
+      reportes: reportesRes.rows,
+    };
+
+    const cleanCCT = (escuela.cct || 'escuela').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `respaldo_escuela_${cleanCCT}_${new Date().toISOString().slice(0, 10)}.json`;
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(JSON.stringify(backupData, null, 2));
+  } catch (error) {
+    console.error('Error al generar respaldo de escuela:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al generar el archivo de respaldo.' });
+  }
+});
+
+// DELETE /api/escuelas/:id - Eliminar escuela definitivamente desde la BD (Solo Administrador Principal)
+router.delete('/:id', authMiddleware, async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const { id } = req.params;
+
+    // REGLA CRÍTICA: Solo el Administrador Principal puede eliminar escuelas de la base de datos
+    if (!req.user || !req.user.es_principal) {
+      return res.status(403).json({
+        success: false,
+        code: 'REQUIERE_AUTORIZACION',
+        message:
+          'Operación restringida: Solo el Administrador Principal tiene autorización para eliminar escuelas de la base de datos. Como administrador secundario, debe emitir una solicitud de autorización.',
+      });
+    }
+
+    const escCheck = await client.query(`SELECT nombre_escuela, cct FROM escuelas WHERE id_escuela = $1`, [id]);
+    if (escCheck.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ success: false, message: 'La escuela no existe o ya fue eliminada.' });
+    }
+
+    const { nombre_escuela, cct } = escCheck.rows[0];
+
+    await client.query('BEGIN');
+
+    // 1. Eliminar calificaciones de los alumnos de la escuela
+    await client.query(
+      `DELETE FROM calificacion WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1)`,
+      [id]
+    );
+
+    // 2. Eliminar asistencias
+    await client.query(
+      `DELETE FROM asistencia WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1)
+       OR id_grupo IN (SELECT id_grupo FROM grupo WHERE id_escuela = $1)`,
+      [id]
+    );
+
+    // 3. Eliminar rendimiento académico
+    await client.query(
+      `DELETE FROM rendimiento_academico WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1)`,
+      [id]
+    );
+
+    // 4. Eliminar alertas y reportes
+    await client.query(`DELETE FROM alerta WHERE id_escuela = $1`, [id]);
+    await client.query(`DELETE FROM reporte WHERE id_escuela = $1`, [id]);
+
+    // 5. Eliminar inscripciones y asignaciones
+    await client.query(
+      `DELETE FROM grupo_alumno WHERE id_alumno IN (SELECT id_alumno FROM alumnos WHERE id_escuela = $1)
+       OR id_grupo IN (SELECT id_grupo FROM grupo WHERE id_escuela = $1)`,
+      [id]
+    );
+    await client.query(
+      `DELETE FROM grupo_docente WHERE id_grupo IN (SELECT id_grupo FROM grupo WHERE id_escuela = $1)
+       OR id_docente IN (SELECT id_docente FROM docentes WHERE id_escuela = $1)`,
+      [id]
+    );
+
+    // 6. Eliminar alumnos y docentes
+    await client.query(`DELETE FROM alumnos WHERE id_escuela = $1`, [id]);
+    await client.query(`DELETE FROM docentes WHERE id_escuela = $1`, [id]);
+
+    // 7. Eliminar grupos y materias
+    await client.query(`DELETE FROM grupo WHERE id_escuela = $1`, [id]);
+    await client.query(`DELETE FROM materia WHERE id_escuela = $1`, [id]);
+
+    // 8. Desvincular solicitudes de escuela
+    await client.query(`UPDATE solicitud_escuela SET id_escuela = NULL WHERE id_escuela = $1`, [id]);
+
+    // 9. Eliminar usuarios vinculados a la escuela (incluye directivo)
+    await client.query(`DELETE FROM usuario WHERE id_escuela = $1`, [id]);
+
+    // 10. Eliminar la escuela
+    await client.query(`DELETE FROM escuelas WHERE id_escuela = $1`, [id]);
+
+    await client.query('COMMIT');
+
+    return res.json({
+      success: true,
+      message: `La escuela "${nombre_escuela}" (CCT: ${cct || 'S/N'}) y toda su estructura han sido eliminadas definitivamente de la base de datos.`,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al eliminar escuela de la BD:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al eliminar la escuela de la base de datos.', error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
 

@@ -4,12 +4,14 @@ import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
 import CsvImportSection from '../../components/directivo/CsvImportSection';
+import EliminarModalDirectivo from '../../components/directivo/EliminarModalDirectivo';
 import {
   GraduationCap,
   UserPlus,
   Search,
   RefreshCw,
   Edit2,
+  Trash2,
   BookOpen,
   Mail,
   Phone,
@@ -49,6 +51,31 @@ export default function DirectivoDocentesView({ escuela }) {
   const [selectedDocente, setSelectedDocente] = useState(null);
   const [asignaciones, setAsignaciones] = useState([]);
   const [loadingAsig, setLoadingAsig] = useState(false);
+
+  // Modal Eliminación Lógica
+  const [docenteToDelete, setDocenteToDelete] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDeleteDocente = async () => {
+    if (!docenteToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const res = await api.deleteDirectivoDocente(docenteToDelete.id_docente);
+      if (res.success) {
+        showToast(res.message, 'success');
+        setShowDeleteModal(false);
+        setDocenteToDelete(null);
+        fetchDocentes();
+      } else {
+        showToast(res.message || 'Error al eliminar docente del sistema.', 'error');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error de comunicación al eliminar docente.', 'error');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   // Formulario (Sin campo de contraseña para creación: el docente define su propia contraseña mediante CURP)
   const [formData, setFormData] = useState({
@@ -358,6 +385,7 @@ export default function DirectivoDocentesView({ escuela }) {
         >
           <option value="todos">Todos los estados</option>
           <option value="Activo">Activos</option>
+          <option value="Pendiente">Pendientes de Activación</option>
           <option value="Inactivo">Inactivos</option>
         </select>
 
@@ -506,6 +534,16 @@ export default function DirectivoDocentesView({ escuela }) {
                                   >
                                     <Edit2 className="w-4 h-4" />
                                   </button>
+                                  <button
+                                    onClick={() => {
+                                      setDocenteToDelete(doc);
+                                      setShowDeleteModal(true);
+                                    }}
+                                    className="p-1.5 rounded-subtle hover:bg-rose-50 text-app-muted hover:text-rose-600 transition-colors cursor-pointer"
+                                    title="Eliminar docente del sistema"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -606,6 +644,16 @@ export default function DirectivoDocentesView({ escuela }) {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
+                          <button
+                            onClick={() => {
+                              setDocenteToDelete(doc);
+                              setShowDeleteModal(true);
+                            }}
+                            className="p-1.5 rounded-subtle hover:bg-rose-50 text-app-muted hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Eliminar docente del sistema"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -693,10 +741,10 @@ export default function DirectivoDocentesView({ escuela }) {
           <form id="form-docente" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
             {/* Aviso de Privacidad y Seguridad */}
             {!editingDocente && (
-              <div className="p-3.5 rounded-card bg-vino-soft/30 border border-vino-light/40 text-vino-dark text-[11px] flex items-start gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-vino-primary shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
-                  <strong className="font-bold">Privacidad de Contraseña:</strong> El directivo ya no asigna contraseñas. Al registrar al docente, el sistema le enviará automáticamente un correo electrónico con un enlace oficial donde podrá comprobar su alta mediante su <strong>CURP</strong> y definir su contraseña personal.
+                  <strong className="font-bold">Alta con Estado Inactivo:</strong> El docente quedará registrado con estado <strong>Inactivo</strong> hasta que ingrese con el enlace enviado a su correo, verifique su <strong>CURP</strong> y defina su contraseña personal. Al hacerlo, el sistema activará su cuenta de manera automática.
                 </div>
               </div>
             )}
@@ -786,19 +834,22 @@ export default function DirectivoDocentesView({ escuela }) {
               </div>
             </div>
 
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Estado de la Cuenta
-              </label>
-              <select
-                value={formData.estado}
-                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
-              >
-                <option value="Activo">Activo (Puede acceder a SICARA)</option>
-                <option value="Inactivo">Inactivo (Acceso suspendido)</option>
-              </select>
-            </div>
+            {editingDocente && (
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Estado de la Cuenta
+                </label>
+                <select
+                  value={formData.estado}
+                  onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+                >
+                  <option value="Pendiente">Pendiente (En espera de verificación por CURP)</option>
+                  <option value="Activo">Activo (Cuenta habilitada)</option>
+                  <option value="Inactivo">Inactivo (Acceso suspendido)</option>
+                </select>
+              </div>
+            )}
           </form>
         ) : (
           <CsvImportSection
@@ -874,6 +925,20 @@ export default function DirectivoDocentesView({ escuela }) {
           </div>
         )}
       </Modal>
+
+      {/* Modal de Eliminación Lógica de Docente con Advertencia de Asignaciones */}
+      <EliminarModalDirectivo
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDocenteToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteDocente}
+        tipo="docente"
+        id={docenteToDelete?.id_docente}
+        nombre={docenteToDelete ? `${docenteToDelete.nombre} ${docenteToDelete.apellidos || ''}` : ''}
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }
