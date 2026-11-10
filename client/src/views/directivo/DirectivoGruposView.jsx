@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
+import CsvImportSection from '../../components/directivo/CsvImportSection';
 import {
   Layers,
   PlusCircle,
@@ -14,6 +15,7 @@ import {
   UserPlus,
   Trash2,
   Calendar,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function DirectivoGruposView({ escuela }) {
@@ -25,6 +27,7 @@ export default function DirectivoGruposView({ escuela }) {
 
   // Modales
   const [showModal, setShowModal] = useState(false);
+  const [modalTab, setModalTab] = useState('manual'); // 'manual' | 'csv'
   const [editingGrupo, setEditingGrupo] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -72,6 +75,7 @@ export default function DirectivoGruposView({ escuela }) {
 
   const handleOpenCreate = () => {
     setEditingGrupo(null);
+    setModalTab('manual');
     setFormData({
       nombre_grupo: '',
       grado: '1',
@@ -83,6 +87,7 @@ export default function DirectivoGruposView({ escuela }) {
 
   const handleOpenEdit = (grp) => {
     setEditingGrupo(grp);
+    setModalTab('manual');
     setFormData({
       nombre_grupo: grp.nombre_grupo || '',
       grado: grp.grado || '1',
@@ -330,93 +335,159 @@ export default function DirectivoGruposView({ escuela }) {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingGrupo ? 'Editar Grupo Escolar' : 'Crear Nuevo Grupo'}
-        subtitle="Defina el grado escolar, denominación y ciclo académico"
-        maxWidth="max-w-md"
+        title={editingGrupo ? 'Editar Grupo Escolar' : 'Crear / Importar Grupos'}
+        subtitle={
+          editingGrupo
+            ? 'Modifique la denominación o ciclo académico del grupo'
+            : 'Registre un grupo manualmente o importe múltiples grupos desde un archivo CSV (Excel)'
+        }
+        maxWidth={modalTab === 'csv' ? 'max-w-2xl' : 'max-w-md'}
         footer={
-          <>
+          modalTab === 'manual' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="form-grupo"
+                disabled={actionLoading}
+                style={{ backgroundColor: primaryColor }}
+                className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {actionLoading ? 'Guardando...' : 'Guardar Grupo'}
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               onClick={() => setShowModal(false)}
-              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
             >
-              Cancelar
+              Cerrar
             </button>
-            <button
-              type="submit"
-              form="form-grupo"
-              disabled={actionLoading}
-              style={{ backgroundColor: primaryColor }}
-              className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {actionLoading ? 'Guardando...' : 'Guardar Grupo'}
-            </button>
-          </>
+          )
         }
       >
-        <form id="form-grupo" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Nombre / Denominación del Grupo <span className="text-status-error">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.nombre_grupo}
-              onChange={(e) => setFormData({ ...formData, nombre_grupo: e.target.value })}
-              placeholder="Ej. 1° A, Multigrado Matutino"
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-            />
+        {/* Selector de pestañas si no se está editando */}
+        {!editingGrupo && (
+          <div className="flex border-b border-app-border mb-4">
+            <button
+              type="button"
+              onClick={() => setModalTab('manual')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'manual'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>Registro Individual</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab('csv')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'csv'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Importar CSV (Excel)</span>
+            </button>
           </div>
+        )}
 
-          <div className="grid grid-cols-2 gap-3">
+        {modalTab === 'manual' ? (
+          <form id="form-grupo" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
             <div>
               <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Grado Escolar
-              </label>
-              <select
-                value={formData.grado}
-                onChange={(e) => setFormData({ ...formData, grado: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
-              >
-                <option value="1">1° de Primaria</option>
-                <option value="2">2° de Primaria</option>
-                <option value="3">3° de Primaria</option>
-                <option value="4">4° de Primaria</option>
-                <option value="5">5° de Primaria</option>
-                <option value="6">6° de Primaria</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Ciclo Escolar
+                Nombre / Denominación del Grupo <span className="text-status-error">*</span>
               </label>
               <input
                 type="text"
                 required
-                value={formData.ciclo_escolar}
-                onChange={(e) => setFormData({ ...formData, ciclo_escolar: e.target.value })}
-                placeholder="2024-2025"
+                value={formData.nombre_grupo}
+                onChange={(e) => setFormData({ ...formData, nombre_grupo: e.target.value })}
+                placeholder="Ej. 1° A, Multigrado Matutino"
                 className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
               />
             </div>
-          </div>
 
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Estado
-            </label>
-            <select
-              value={formData.estado}
-              onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
-            >
-              <option value="Activo">Activo</option>
-              <option value="Inactivo">Inactivo</option>
-            </select>
-          </div>
-        </form>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Grado Escolar
+                </label>
+                <select
+                  value={formData.grado}
+                  onChange={(e) => setFormData({ ...formData, grado: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+                >
+                  <option value="1">1° de Primaria</option>
+                  <option value="2">2° de Primaria</option>
+                  <option value="3">3° de Primaria</option>
+                  <option value="4">4° de Primaria</option>
+                  <option value="5">5° de Primaria</option>
+                  <option value="6">6° de Primaria</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Ciclo Escolar
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.ciclo_escolar}
+                  onChange={(e) => setFormData({ ...formData, ciclo_escolar: e.target.value })}
+                  placeholder="2024-2025"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Estado
+              </label>
+              <select
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+              >
+                <option value="Activo">Activo</option>
+                <option value="Inactivo">Inactivo</option>
+              </select>
+            </div>
+          </form>
+        ) : (
+          <CsvImportSection
+            title="Importar Grupos Escolares"
+            templateFilename="plantilla_grupos_sicara.csv"
+            templateHeaders={['nombre_grupo', 'grado', 'ciclo_escolar', 'estado']}
+            sampleRows={[
+              ['1° A', '1', '2024-2025', 'Activo'],
+              ['2° A', '2', '2024-2025', 'Activo'],
+              ['Multigrado Matutino', '1', '2024-2025', 'Activo'],
+            ]}
+            columnGuide={[
+              { name: 'nombre_grupo', required: true },
+              { name: 'grado', required: false },
+              { name: 'ciclo_escolar', required: false },
+              { name: 'estado', required: false },
+            ]}
+            onImportBatch={api.importarGruposBatch}
+            onSuccess={() => fetchGrupos()}
+            primaryColor={primaryColor}
+          />
+        )}
       </Modal>
 
       {/* MODAL: Detalle de Grupo (Inscribir Alumnos y Carga de Docentes) */}

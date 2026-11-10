@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const db = require('../config/db');
 const { directivoMiddleware, JWT_SECRET } = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { enviarCorreoAltaDocente } = require('../utils/email');
 
 // ==========================================
 // RUTA DE LOGO INSTITUCIONAL
@@ -313,6 +315,101 @@ router.post('/alumnos', async (req, res) => {
   }
 });
 
+// Importar alumnos en lote desde CSV
+router.post('/alumnos/batch', async (req, res) => {
+  try {
+    const id_escuela = req.user.id_escuela;
+    const { alumnos } = req.body;
+
+    if (!Array.isArray(alumnos) || alumnos.length === 0) {
+      return res.status(400).json({ success: false, message: 'No se enviaron alumnos para importar.' });
+    }
+
+    // Cachear grupos existentes para mapear por nombre o id
+    const gruposRes = await db.query(
+      `SELECT id_grupo, LOWER(TRIM(nombre_grupo)) AS nombre_norm FROM grupo WHERE id_escuela = $1`,
+      [id_escuela]
+    );
+    const gruposMap = new Map();
+    gruposRes.rows.forEach((g) => {
+      gruposMap.set(g.nombre_norm, g.id_grupo);
+      gruposMap.set(String(g.id_grupo), g.id_grupo);
+    });
+
+    let creados = 0;
+    const errores = [];
+
+    for (let i = 0; i < alumnos.length; i++) {
+      const a = alumnos[i];
+      const fila = a._rowNumber || i + 2;
+
+      const nombre = (a.nombre || '').trim();
+      const apellidos = (a.apellidos || '').trim();
+      const curp = a.curp ? a.curp.trim().toUpperCase() : null;
+      let fecha_nacimiento = a.fecha_nacimiento || null;
+      if (fecha_nacimiento && !/^\d{4}-\d{2}-\d{2}$/.test(fecha_nacimiento)) {
+        // Tratar de adaptar DD/MM/AAAA o DD-MM-AAAA
+        const ddmmyyyy = fecha_nacimiento.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (ddmmyyyy) {
+          const dia = ddmmyyyy[1].padStart(2, '0');
+          const mes = ddmmyyyy[2].padStart(2, '0');
+          const anio = ddmmyyyy[3];
+          fecha_nacimiento = `${anio}-${mes}-${dia}`;
+        } else {
+          fecha_nacimiento = null;
+        }
+      }
+      const estado = a.estado ? a.estado.trim() : 'Activo';
+
+      if (!nombre) {
+        errores.push({ fila, error: 'El nombre es obligatorio.' });
+        continue;
+      }
+
+      try {
+        const insertRes = await db.query(
+          `INSERT INTO alumnos (id_escuela, nombre, apellidos, curp, fecha_nacimiento, estado)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id_alumno`,
+          [id_escuela, nombre, apellidos, curp, fecha_nacimiento, estado]
+        );
+        const id_alumno = insertRes.rows[0].id_alumno;
+
+        // Mapear grupo si se indicó
+        const grupoVal = (a.grupo || a.nombre_grupo || a.id_grupo || '').toString().trim().toLowerCase();
+        let targetGrupoId = null;
+        if (grupoVal && gruposMap.has(grupoVal)) {
+          targetGrupoId = gruposMap.get(grupoVal);
+        }
+
+        if (targetGrupoId) {
+          await db.query(
+            `INSERT INTO grupo_alumno (id_grupo, id_alumno, fecha_inscripcion, estado)
+             VALUES ($1, $2, CURRENT_DATE, 'Activo')
+             ON CONFLICT DO NOTHING`,
+            [targetGrupoId, id_alumno]
+          );
+        }
+
+        creados++;
+      } catch (rowErr) {
+        errores.push({ fila, error: rowErr.message || 'Error al guardar alumno.' });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Se importaron ${creados} de ${alumnos.length} alumnos correctamente.`,
+      creados,
+      total: alumnos.length,
+      errores,
+    });
+  } catch (err) {
+    console.error('Error en POST /api/directivo/alumnos/batch:', err);
+    return res.status(500).json({ success: false, message: 'Error al importar alumnos en lote.' });
+  }
+});
+
 router.put('/alumnos/:id', async (req, res) => {
   try {
     const id_escuela = req.user.id_escuela;
@@ -480,7 +577,7 @@ router.get('/docentes', async (req, res) => {
 router.post('/docentes', async (req, res) => {
   try {
     const id_escuela = req.user.id_escuela;
-    const { nombre, apellidos, correo, contrasena, curp, especialidad, telefono, estado } = req.body;
+    const { nombre, apellidos, correo, curp, especialidad, telefono, estado } = req.body;
 
     if (!nombre || !nombre.trim()) {
       return res.status(400).json({ success: false, message: 'El nombre es obligatorio.' });
@@ -488,11 +585,9 @@ router.post('/docentes', async (req, res) => {
     if (!correo || !correo.trim()) {
       return res.status(400).json({ success: false, message: 'El correo electrónico es obligatorio.' });
     }
-    if (!contrasena || contrasena.length < 6) {
-      return res.status(400).json({ success: false, message: 'La contraseña inicial debe tener al menos 6 caracteres.' });
-    }
 
     const trimmedEmail = correo.trim().toLowerCase();
+    const cleanCurp = curp ? curp.trim().toUpperCase() : null;
 
     // Validar si el correo ya existe
     const existUser = await db.query(`SELECT id_usuario FROM usuario WHERE LOWER(correo) = $1`, [trimmedEmail]);
@@ -500,14 +595,19 @@ router.post('/docentes', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Ya existe una cuenta registrada con este correo electrónico.' });
     }
 
-    // Hashear contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(contrasena, salt);
+    // Consultar nombre de la escuela para el correo
+    const escRes = await db.query(`SELECT nombre_escuela FROM escuelas WHERE id_escuela = $1`, [id_escuela]);
+    const nombreEscuela = escRes.rows.length > 0 ? escRes.rows[0].nombre_escuela : 'Escuela SICARA';
 
-    // 1. Crear usuario con rol 'Docente'
+    // Se asigna un hash temporal hasta que el docente defina su propia contraseña personal
+    const tempPass = crypto.randomBytes(16).toString('hex') + 'Aa1!';
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(tempPass, salt);
+
+    // 1. Crear usuario con rol 'Docente' y cuenta_activada en false
     const userRes = await db.query(
-      `INSERT INTO usuario (id_escuela, nombre, apellidos, correo, contrasena, rol, estado, fecha_registro, es_principal)
-       VALUES ($1, $2, $3, $4, $5, 'Docente', $6, CURRENT_TIMESTAMP, false)
+      `INSERT INTO usuario (id_escuela, nombre, apellidos, correo, contrasena, rol, estado, fecha_registro, es_principal, cuenta_activada)
+       VALUES ($1, $2, $3, $4, $5, 'Docente', $6, CURRENT_TIMESTAMP, false, false)
        RETURNING id_usuario`,
       [id_escuela, nombre.trim(), (apellidos || '').trim(), trimmedEmail, hash, estado || 'Activo']
     );
@@ -522,21 +622,137 @@ router.post('/docentes', async (req, res) => {
       [
         id_usuario,
         id_escuela,
-        curp ? curp.trim().toUpperCase() : null,
+        cleanCurp,
         (especialidad || '').trim(),
         (telefono || '').trim(),
         estado || 'Activo',
       ]
     );
 
+    // 3. Enviar correo de alta al docente con botón para verificar CURP y crear su contraseña
+    let emailStatus = null;
+    try {
+      emailStatus = await enviarCorreoAltaDocente({
+        destinatario: trimmedEmail,
+        nombreDocente: `${nombre.trim()} ${(apellidos || '').trim()}`.trim(),
+        escuelaNombre: nombreEscuela,
+        curp: cleanCurp,
+      });
+    } catch (mailErr) {
+      console.error('Error al enviar correo al docente:', mailErr);
+      emailStatus = { sent: false, error: mailErr.message };
+    }
+
     return res.json({
       success: true,
-      message: 'Docente registrado exitosamente con credenciales de acceso.',
+      message: emailStatus?.sent
+        ? 'Docente registrado exitosamente. Se ha enviado un correo con el enlace para verificar su CURP y crear su contraseña.'
+        : 'Docente registrado exitosamente. (Aviso de correo: ' + (emailStatus?.error || 'Pendiente de envío') + ')',
       docente: docenteRes.rows[0],
+      emailStatus,
     });
   } catch (err) {
     console.error('Error en POST /api/directivo/docentes:', err);
     return res.status(500).json({ success: false, message: 'Error al registrar docente.' });
+  }
+});
+
+// Importar docentes en lote desde CSV
+router.post('/docentes/batch', async (req, res) => {
+  try {
+    const id_escuela = req.user.id_escuela;
+    const { docentes } = req.body;
+
+    if (!Array.isArray(docentes) || docentes.length === 0) {
+      return res.status(400).json({ success: false, message: 'No se enviaron docentes para importar.' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let creados = 0;
+    const errores = [];
+
+    // Consultar nombre de la escuela para los correos
+    const escRes = await db.query(`SELECT nombre_escuela FROM escuelas WHERE id_escuela = $1`, [id_escuela]);
+    const nombreEscuela = escRes.rows.length > 0 ? escRes.rows[0].nombre_escuela : 'Escuela SICARA';
+
+    // Pre-generar un salt
+    const salt = await bcrypt.genSalt(10);
+
+    for (let i = 0; i < docentes.length; i++) {
+      const d = docentes[i];
+      const fila = d._rowNumber || i + 2;
+
+      const nombre = (d.nombre || '').trim();
+      const apellidos = (d.apellidos || '').trim();
+      const correo = (d.correo || d.email || '').trim().toLowerCase();
+      const curp = d.curp ? d.curp.trim().toUpperCase() : null;
+      const especialidad = (d.especialidad || '').trim();
+      const telefono = (d.telefono || '').trim();
+      const estado = d.estado ? d.estado.trim() : 'Activo';
+
+      if (!nombre) {
+        errores.push({ fila, error: 'El nombre es obligatorio.' });
+        continue;
+      }
+      if (!correo || !emailRegex.test(correo)) {
+        errores.push({ fila, error: `Correo "${correo}" inválido.` });
+        continue;
+      }
+
+      // Validar si el correo ya existe
+      const checkCorreo = await db.query(`SELECT id_usuario FROM usuario WHERE LOWER(correo) = $1`, [correo]);
+      if (checkCorreo.rows.length > 0) {
+        errores.push({ fila, error: `El correo "${correo}" ya se encuentra registrado.` });
+        continue;
+      }
+
+      try {
+        // Asignar contraseña temporal segura
+        const tempPass = crypto.randomBytes(16).toString('hex') + 'Aa1!';
+        const passwordHash = await bcrypt.hash(tempPass, salt);
+
+        const userRes = await db.query(
+          `INSERT INTO usuario (nombre, apellidos, correo, contrasena, rol, id_escuela, estado, fecha_registro, cuenta_activada)
+           VALUES ($1, $2, $3, $4, 'Docente', $5, $6, NOW(), FALSE)
+           RETURNING id_usuario`,
+          [nombre, apellidos, correo, passwordHash, id_escuela, estado]
+        );
+        const id_usuario = userRes.rows[0].id_usuario;
+
+        await db.query(
+          `INSERT INTO docentes (id_usuario, id_escuela, curp, especialidad, telefono, estado)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id_usuario, id_escuela, curp, especialidad, telefono, estado]
+        );
+
+        // Despachar correo de alta al docente con el botón de verificación por CURP
+        try {
+          await enviarCorreoAltaDocente({
+            destinatario: correo,
+            nombreDocente: `${nombre} ${apellidos}`.trim(),
+            escuelaNombre: nombreEscuela,
+            curp,
+          });
+        } catch (mailErr) {
+          console.error(`Error enviando correo a docente en fila ${fila}:`, mailErr.message);
+        }
+
+        creados++;
+      } catch (rowErr) {
+        errores.push({ fila, error: rowErr.message || 'Error al guardar docente.' });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Se importaron ${creados} de ${docentes.length} docentes correctamente.`,
+      creados,
+      total: docentes.length,
+      errores,
+    });
+  } catch (err) {
+    console.error('Error en POST /api/directivo/docentes/batch:', err);
+    return res.status(500).json({ success: false, message: 'Error al importar docentes en lote.' });
   }
 });
 
@@ -600,6 +816,51 @@ router.put('/docentes/:id', async (req, res) => {
   } catch (err) {
     console.error('Error en PUT /api/directivo/docentes/:id:', err);
     return res.status(500).json({ success: false, message: 'Error al actualizar docente.' });
+  }
+});
+
+// Reenviar correo de alta e instrucciones de CURP al docente
+router.post('/docentes/:id/reenviar-correo', async (req, res) => {
+  try {
+    const id_escuela = req.user.id_escuela;
+    const { id } = req.params;
+
+    const docRes = await db.query(
+      `SELECT d.id_docente, d.curp, u.id_usuario, u.nombre, u.apellidos, u.correo,
+              e.nombre_escuela
+       FROM docentes d
+       JOIN usuario u ON d.id_usuario = u.id_usuario
+       JOIN escuelas e ON d.id_escuela = e.id_escuela
+       WHERE d.id_docente = $1 AND d.id_escuela = $2`,
+      [id, id_escuela]
+    );
+
+    if (docRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Docente no encontrado en este plantel.' });
+    }
+
+    const doc = docRes.rows[0];
+    const emailRes = await enviarCorreoAltaDocente({
+      destinatario: doc.correo,
+      nombreDocente: `${doc.nombre} ${doc.apellidos || ''}`.trim(),
+      escuelaNombre: doc.nombre_escuela,
+      curp: doc.curp,
+    });
+
+    if (!emailRes.sent) {
+      return res.status(500).json({
+        success: false,
+        message: emailRes.error || 'No se pudo enviar el correo al docente. Verifique la configuración SMTP.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `Correo de verificación de alta reenviado correctamente a ${doc.correo}.`,
+    });
+  } catch (err) {
+    console.error('Error al reenviar correo al docente:', err);
+    return res.status(500).json({ success: false, message: 'Error interno al reenviar correo al docente.' });
   }
 });
 
@@ -703,6 +964,58 @@ router.post('/grupos', async (req, res) => {
   } catch (err) {
     console.error('Error en POST /api/directivo/grupos:', err);
     return res.status(500).json({ success: false, message: 'Error al registrar grupo.' });
+  }
+});
+
+// Importar grupos en lote desde CSV
+router.post('/grupos/batch', async (req, res) => {
+  try {
+    const id_escuela = req.user.id_escuela;
+    const { grupos } = req.body;
+
+    if (!Array.isArray(grupos) || grupos.length === 0) {
+      return res.status(400).json({ success: false, message: 'No se enviaron grupos para importar.' });
+    }
+
+    let creados = 0;
+    const errores = [];
+
+    for (let i = 0; i < grupos.length; i++) {
+      const g = grupos[i];
+      const fila = g._rowNumber || i + 2;
+
+      const nombre_grupo = (g.nombre_grupo || g.grupo || g.nombre || '').trim();
+      const grado = (g.grado !== undefined && g.grado !== null ? String(g.grado).trim() : '1');
+      const ciclo_escolar = (g.ciclo_escolar || g.ciclo || '2024-2025').trim();
+      const estado = g.estado ? g.estado.trim() : 'Activo';
+
+      if (!nombre_grupo) {
+        errores.push({ fila, error: 'El nombre del grupo es obligatorio.' });
+        continue;
+      }
+
+      try {
+        await db.query(
+          `INSERT INTO grupo (id_escuela, nombre_grupo, grado, ciclo_escolar, estado)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id_escuela, nombre_grupo, grado, ciclo_escolar, estado]
+        );
+        creados++;
+      } catch (rowErr) {
+        errores.push({ fila, error: rowErr.message || 'Error al guardar grupo.' });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Se importaron ${creados} de ${grupos.length} grupos correctamente.`,
+      creados,
+      total: grupos.length,
+      errores,
+    });
+  } catch (err) {
+    console.error('Error en POST /api/directivo/grupos/batch:', err);
+    return res.status(500).json({ success: false, message: 'Error al importar grupos en lote.' });
   }
 });
 
@@ -931,6 +1244,57 @@ router.post('/materias', async (req, res) => {
   } catch (err) {
     console.error('Error en POST /api/directivo/materias:', err);
     return res.status(500).json({ success: false, message: 'Error al registrar materia.' });
+  }
+});
+
+// Importar materias en lote desde CSV
+router.post('/materias/batch', async (req, res) => {
+  try {
+    const id_escuela = req.user.id_escuela;
+    const { materias } = req.body;
+
+    if (!Array.isArray(materias) || materias.length === 0) {
+      return res.status(400).json({ success: false, message: 'No se enviaron materias para importar.' });
+    }
+
+    let creados = 0;
+    const errores = [];
+
+    for (let i = 0; i < materias.length; i++) {
+      const m = materias[i];
+      const fila = m._rowNumber || i + 2;
+
+      const nombre_materia = (m.nombre_materia || m.materia || m.nombre || '').trim();
+      const descripcion = (m.descripcion || '').trim();
+      const estado = m.estado ? m.estado.trim() : 'Activo';
+
+      if (!nombre_materia) {
+        errores.push({ fila, error: 'El nombre de la materia es obligatorio.' });
+        continue;
+      }
+
+      try {
+        await db.query(
+          `INSERT INTO materia (nombre_materia, descripcion, estado, id_escuela)
+           VALUES ($1, $2, $3, $4)`,
+          [nombre_materia, descripcion, estado, id_escuela]
+        );
+        creados++;
+      } catch (rowErr) {
+        errores.push({ fila, error: rowErr.message || 'Error al guardar materia.' });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Se importaron ${creados} de ${materias.length} materias correctamente.`,
+      creados,
+      total: materias.length,
+      errores,
+    });
+  } catch (err) {
+    console.error('Error en POST /api/directivo/materias/batch:', err);
+    return res.status(500).json({ success: false, message: 'Error al importar materias en lote.' });
   }
 });
 

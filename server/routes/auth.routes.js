@@ -77,19 +77,19 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Permitir roles autorizados: Administrador o Directivo
-    if (user.rol !== 'Administrador' && user.rol !== 'Directivo') {
+    // Permitir roles autorizados: Administrador, Directivo o Docente
+    if (user.rol !== 'Administrador' && user.rol !== 'Directivo' && user.rol !== 'Docente') {
       return res.status(403).json({
         success: false,
         message: 'Acceso no disponible para este rol en esta versión del sistema.',
       });
     }
 
-    // Si es directivo, debe tener una escuela asignada
-    if (user.rol === 'Directivo' && !user.id_escuela) {
+    // Si es directivo o docente, debe tener una escuela asignada
+    if ((user.rol === 'Directivo' || user.rol === 'Docente') && !user.id_escuela) {
       return res.status(403).json({
         success: false,
-        message: 'La cuenta de Directivo no tiene una escuela asociada asignada.',
+        message: `La cuenta de ${user.rol} no tiene una escuela asociada asignada.`,
       });
     }
 
@@ -769,6 +769,222 @@ router.post('/recuperar/completar', async (req, res) => {
   } catch (error) {
     console.error('Error al completar restablecimiento de contraseña:', error);
     return res.status(500).json({ success: false, message: 'Error interno al restablecer la contraseña.' });
+  }
+});
+
+// ==========================================
+// FLUJO DE VERIFICACIÓN DE DOCENTE POR CURP Y CREACIÓN DE CONTRASEÑA
+// ==========================================
+
+// POST /api/auth/docente/verificar-curp - Valida que tanto el correo como la CURP coincidan con el registro del docente
+router.post('/docente/verificar-curp', async (req, res) => {
+  try {
+    const { curp, correo } = req.body;
+
+    const cleanCurp = (curp || '').trim().toUpperCase();
+    const cleanEmail = (correo || '').trim().toLowerCase();
+
+    if (!cleanCurp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debe proporcionar su CURP (18 caracteres) para verificar su alta.',
+      });
+    }
+
+    if (!cleanEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debe ingresar el correo electrónico institucional o personal registrado por su escuela.',
+      });
+    }
+
+    // Consulta estricta: deben coincidir AMBOS (correo registrado Y curp registrada)
+    const query = `
+      SELECT d.id_docente, d.curp, d.especialidad, d.telefono, d.estado as estado_docente,
+             u.id_usuario, u.nombre, u.apellidos, u.correo, u.rol, u.estado as estado_usuario, u.cuenta_activada,
+             e.id_escuela, e.nombre_escuela, e.cct, e.color_primario, e.color_secundario
+      FROM docentes d
+      JOIN usuario u ON d.id_usuario = u.id_usuario
+      JOIN escuelas e ON d.id_escuela = e.id_escuela
+      WHERE u.rol = 'Docente'
+        AND LOWER(TRIM(u.correo)) = $1
+        AND UPPER(TRIM(COALESCE(d.curp, ''))) = $2
+    `;
+
+    const result = await db.query(query, [cleanEmail, cleanCurp]);
+
+    if (result.rows.length === 0) {
+      // Comprobar si el correo existe pero la CURP no coincide para dar retroalimentación clara
+      const correoCheck = await db.query(
+        `SELECT u.id_usuario FROM usuario u WHERE LOWER(TRIM(u.correo)) = $1 AND u.rol = 'Docente'`,
+        [cleanEmail]
+      );
+
+      if (correoCheck.rows.length > 0) {
+        return res.status(401).json({
+          success: false,
+          code: 'CURP_NO_COINCIDE',
+          message: 'La CURP ingresada no coincide con el registro del docente asociado a este correo electrónico.',
+        });
+      }
+
+      return res.status(404).json({
+        success: false,
+        code: 'DOCENTE_NO_ENCONTRADO',
+        message: 'No se encontró ningún docente registrado con el correo y CURP proporcionados. Verifique con la dirección de su plantel.',
+      });
+    }
+
+    const doc = result.rows[0];
+
+    // Restricción de activación única: si la cuenta ya fue activada previamente, rechazar
+    if (doc.cuenta_activada) {
+      return res.status(400).json({
+        success: false,
+        code: 'CUENTA_YA_ACTIVADA',
+        message: 'Esta cuenta docente ya ha sido activada anteriormente. Por favor ingrese directamente desde la pantalla de Inicio de Sesión con su correo y contraseña.',
+      });
+    }
+
+    // Verificar si la cuenta del docente está activa
+    if (doc.estado_usuario && doc.estado_usuario.toLowerCase() !== 'activo') {
+      return res.status(403).json({
+        success: false,
+        code: 'DOCENTE_INACTIVO',
+        message: 'Su registro docente se encuentra inactivo. Comuníquese con la dirección de su plantel.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: '¡Docente verificado exitosamente! Se encuentra dado de alta en la plataforma.',
+      docente: {
+        id_docente: doc.id_docente,
+        id_usuario: doc.id_usuario,
+        nombre: doc.nombre,
+        apellidos: doc.apellidos,
+        correo: doc.correo,
+        curp: doc.curp,
+        especialidad: doc.especialidad,
+        escuela: {
+          id_escuela: doc.id_escuela,
+          nombre_escuela: doc.nombre_escuela,
+          cct: doc.cct,
+          color_primario: doc.color_primario || '#722F37',
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Error al verificar CURP de docente:', err);
+    return res.status(500).json({ success: false, message: 'Error interno al consultar el registro del docente.' });
+  }
+});
+
+// POST /api/auth/docente/establecer-password - Crea/actualiza contraseña del docente tras verificar CURP e inicia sesión
+router.post('/docente/establecer-password', async (req, res) => {
+  try {
+    const { id_usuario, curp, contrasena, confirmarContrasena } = req.body;
+
+    if (!id_usuario) {
+      return res.status(400).json({ success: false, message: 'Identificador de usuario no proporcionado.' });
+    }
+
+    if (!contrasena || !confirmarContrasena) {
+      return res.status(400).json({ success: false, message: 'Debe ingresar y confirmar su nueva contraseña.' });
+    }
+
+    if (contrasena !== confirmarContrasena) {
+      return res.status(400).json({ success: false, message: 'Las contraseñas no coinciden.' });
+    }
+
+    // Regla de contraseña estricta: mínimo 8 caracteres, al menos 1 mayúscula, 1 minúscula, 1 número y 1 símbolo
+    const regexSeguridad = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d\s]).{8,72}$/;
+    if (!regexSeguridad.test(contrasena)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La contraseña debe contener al menos 8 caracteres, incluyendo una letra mayúscula, una minúscula, un número y un carácter especial.',
+      });
+    }
+
+    // Verificar usuario docente
+    const userRes = await db.query(
+      `SELECT u.id_usuario, u.id_escuela, u.nombre, u.apellidos, u.correo, u.rol, u.estado, u.cuenta_activada,
+              e.nombre_escuela, e.cct, e.color_primario, e.color_secundario, e.color_complementario, e.tipo_logo
+       FROM usuario u
+       JOIN docentes d ON u.id_usuario = d.id_usuario
+       JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE u.id_usuario = $1 AND u.rol = 'Docente'`,
+      [id_usuario]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Usuario docente no encontrado.' });
+    }
+
+    const user = userRes.rows[0];
+
+    // Restricción de activación única: si ya está activada, impedir modificación por esta vía
+    if (user.cuenta_activada) {
+      return res.status(400).json({
+        success: false,
+        message: 'Esta cuenta ya ha sido activada previamente. Para ingresar utilice el Inicio de Sesión.',
+      });
+    }
+
+    // Cifrar la nueva contraseña con bcrypt
+    const salt = await bcrypt.genSalt(10);
+    const passHash = await bcrypt.hash(contrasena, salt);
+
+    // Actualizar usuario: guardar contraseña, activar cuenta
+    await db.query(
+      `UPDATE usuario
+       SET contrasena = $1,
+           cuenta_activada = TRUE,
+           estado = 'Activo'
+       WHERE id_usuario = $2`,
+      [passHash, user.id_usuario]
+    );
+
+    // Iniciar sesión automáticamente generando token JWT para el docente
+    const tokenPayload = {
+      id_usuario: user.id_usuario,
+      id_escuela: user.id_escuela,
+      correo: user.correo,
+      rol: 'Docente',
+      es_principal: false,
+      nombre: user.nombre,
+      apellidos: user.apellidos,
+    };
+
+    const sessionToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '12h' });
+
+    return res.json({
+      success: true,
+      message: '¡Contraseña asignada exitosamente! Bienvenido a su panel de docente.',
+      token: sessionToken,
+      user: {
+        id_usuario: user.id_usuario,
+        id_escuela: user.id_escuela,
+        nombre: user.nombre,
+        apellidos: user.apellidos,
+        correo: user.correo,
+        rol: 'Docente',
+        estado: 'Activo',
+        es_principal: false,
+        escuela: {
+          id_escuela: user.id_escuela,
+          nombre_escuela: user.nombre_escuela,
+          cct: user.cct,
+          color_primario: user.color_primario || '#722F37',
+          color_secundario: user.color_secundario || '#4A1722',
+          color_complementario: user.color_complementario || '#A64D5A',
+          tiene_logo: Boolean(user.tipo_logo),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Error al establecer contraseña de docente:', err);
+    return res.status(500).json({ success: false, message: 'Error interno al guardar la contraseña.' });
   }
 });
 

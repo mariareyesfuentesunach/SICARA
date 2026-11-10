@@ -29,6 +29,9 @@ import ActivacionView from './views/ActivacionView';
 // Pantalla de Restablecimiento de Contraseña
 import RecuperarPasswordView from './views/RecuperarPasswordView';
 
+// Pantalla de Verificación de Docente por CURP y Creación de Contraseña
+import VerificarDocenteView from './views/VerificarDocenteView';
+
 export default function App() {
   const { user, isAuthenticated, loading, logout, isDirectivo } = useAuth();
   const { showToast } = useToast();
@@ -62,13 +65,24 @@ export default function App() {
     }
   });
 
+  const [initialCurp, setInitialCurp] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('curp') || '';
+    } catch {
+      return '';
+    }
+  });
+
   // Estado para la navegación pública (cuando no está autenticado)
-  // 'landing'   -> Muestra la Landing Page de bienvenida
-  // 'login'     -> Muestra la ventana de inicio de sesión
-  // 'recuperar' -> Muestra la ventana de restablecimiento de contraseña
+  // 'landing'            -> Muestra la Landing Page de bienvenida
+  // 'login'              -> Muestra la ventana de inicio de sesión
+  // 'recuperar'          -> Muestra la ventana de restablecimiento de contraseña
+  // 'verificar_docente'  -> Muestra la verificación de CURP y creación de contraseña para docentes
   const [publicView, setPublicView] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
+      if (params.get('verificar_docente') === 'true' || params.get('curp')) return 'verificar_docente';
       if (params.get('login') === 'true') return 'login';
       if (params.get('recuperar')) return 'recuperar';
       return 'landing';
@@ -183,6 +197,25 @@ export default function App() {
         }}
         onGoToLogin={() => {
           setRecoveryToken(null);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setPublicView('login');
+        }}
+      />
+    );
+  }
+
+  // Si existe solicitud de verificación de docente por CURP en la URL (ej: /?verificar_docente=true&curp=...)
+  // y el usuario aún no está autenticado, renderizar VerificarDocenteView
+  if (publicView === 'verificar_docente' && !isAuthenticated) {
+    return (
+      <VerificarDocenteView
+        initialCurp={initialCurp}
+        initialEmail={initialEmail}
+        onCancel={() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setPublicView('landing');
+        }}
+        onGoToLogin={() => {
           window.history.replaceState({}, document.title, window.location.pathname);
           setPublicView('login');
         }}

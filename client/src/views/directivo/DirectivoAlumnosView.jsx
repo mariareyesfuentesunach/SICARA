@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
+import CsvImportSection from '../../components/directivo/CsvImportSection';
 import {
   Users,
   UserPlus,
@@ -15,6 +16,7 @@ import {
   AlertTriangle,
   Award,
   Layers,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function DirectivoAlumnosView({ escuela }) {
@@ -28,6 +30,7 @@ export default function DirectivoAlumnosView({ escuela }) {
 
   // Modales
   const [showModal, setShowModal] = useState(false);
+  const [modalTab, setModalTab] = useState('manual'); // 'manual' | 'csv'
   const [editingAlumno, setEditingAlumno] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -81,6 +84,7 @@ export default function DirectivoAlumnosView({ escuela }) {
 
   const handleOpenCreate = () => {
     setEditingAlumno(null);
+    setModalTab('manual');
     setFormData({
       nombre: '',
       apellidos: '',
@@ -94,6 +98,7 @@ export default function DirectivoAlumnosView({ escuela }) {
 
   const handleOpenEdit = (al) => {
     setEditingAlumno(al);
+    setModalTab('manual');
     setFormData({
       nombre: al.nombre || '',
       apellidos: al.apellidos || '',
@@ -309,119 +314,187 @@ export default function DirectivoAlumnosView({ escuela }) {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingAlumno ? 'Editar Alumno' : 'Registrar Nuevo Alumno'}
-        subtitle="Complete los datos del alumno de acuerdo con su registro oficial"
-        maxWidth="max-w-xl"
+        title={editingAlumno ? 'Editar Alumno' : 'Registrar / Importar Alumnos'}
+        subtitle={
+          editingAlumno
+            ? 'Complete los datos del alumno de acuerdo con su registro oficial'
+            : 'Registre un alumno manualmente o importe múltiples alumnos desde un archivo CSV (Excel)'
+        }
+        maxWidth={modalTab === 'csv' ? 'max-w-2xl' : 'max-w-xl'}
         footer={
-          <>
+          modalTab === 'manual' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="form-alumno"
+                disabled={actionLoading}
+                style={{ backgroundColor: primaryColor }}
+                className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {actionLoading ? 'Guardando...' : 'Guardar Alumno'}
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               onClick={() => setShowModal(false)}
-              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
             >
-              Cancelar
+              Cerrar
             </button>
-            <button
-              type="submit"
-              form="form-alumno"
-              disabled={actionLoading}
-              style={{ backgroundColor: primaryColor }}
-              className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {actionLoading ? 'Guardando...' : 'Guardar Alumno'}
-            </button>
-          </>
+          )
         }
       >
-        <form id="form-alumno" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Nombre(s) <span className="text-status-error">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.nombre}
-                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                placeholder="Ej. Sofía"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Apellidos
-              </label>
-              <input
-                type="text"
-                value={formData.apellidos}
-                onChange={(e) => setFormData({ ...formData, apellidos: e.target.value })}
-                placeholder="Ej. Hernández Cruz"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
+        {/* Selector de pestañas si no se está editando */}
+        {!editingAlumno && (
+          <div className="flex border-b border-app-border mb-4">
+            <button
+              type="button"
+              onClick={() => setModalTab('manual')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'manual'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Registro Individual</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab('csv')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'csv'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Importar CSV (Excel)</span>
+            </button>
           </div>
+        )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                CURP (18 caracteres)
-              </label>
-              <input
-                type="text"
-                maxLength={18}
-                value={formData.curp}
-                onChange={(e) => setFormData({ ...formData, curp: e.target.value.toUpperCase() })}
-                placeholder="Ej. HECS130418MOCRRFO8"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary font-mono text-xs uppercase"
-              />
+        {modalTab === 'manual' ? (
+          <form id="form-alumno" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Nombre(s) <span className="text-status-error">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  placeholder="Ej. Sofía"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Apellidos
+                </label>
+                <input
+                  type="text"
+                  value={formData.apellidos}
+                  onChange={(e) => setFormData({ ...formData, apellidos: e.target.value })}
+                  placeholder="Ej. Hernández Cruz"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Fecha de Nacimiento
-              </label>
-              <input
-                type="date"
-                value={formData.fecha_nacimiento}
-                onChange={(e) => setFormData({ ...formData, fecha_nacimiento: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Grupo de Inscripción
-              </label>
-              <select
-                value={formData.id_grupo}
-                onChange={(e) => setFormData({ ...formData, id_grupo: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
-              >
-                <option value="">Sin grupo asignado</option>
-                {grupos.map((g) => (
-                  <option key={g.id_grupo} value={g.id_grupo}>
-                    {g.nombre_grupo} ({g.grado}° - Ciclo {g.ciclo_escolar})
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  CURP (18 caracteres)
+                </label>
+                <input
+                  type="text"
+                  maxLength={18}
+                  value={formData.curp}
+                  onChange={(e) => setFormData({ ...formData, curp: e.target.value.toUpperCase() })}
+                  placeholder="Ej. HECS130418MOCRRFO8"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary font-mono text-xs uppercase"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Fecha de Nacimiento
+                </label>
+                <input
+                  type="date"
+                  value={formData.fecha_nacimiento}
+                  onChange={(e) => setFormData({ ...formData, fecha_nacimiento: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Estado del Alumno
-              </label>
-              <select
-                value={formData.estado}
-                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
-              >
-                <option value="Activo">Activo</option>
-                <option value="Inactivo">Inactivo</option>
-              </select>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Grupo de Inscripción
+                </label>
+                <select
+                  value={formData.id_grupo}
+                  onChange={(e) => setFormData({ ...formData, id_grupo: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+                >
+                  <option value="">Sin grupo asignado</option>
+                  {grupos.map((g) => (
+                    <option key={g.id_grupo} value={g.id_grupo}>
+                      {g.nombre_grupo} ({g.grado}° - Ciclo {g.ciclo_escolar})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Estado del Alumno
+                </label>
+                <select
+                  value={formData.estado}
+                  onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+                >
+                  <option value="Activo">Activo</option>
+                  <option value="Inactivo">Inactivo</option>
+                </select>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        ) : (
+          <CsvImportSection
+            title="Importar Alumnos"
+            templateFilename="plantilla_alumnos_sicara.csv"
+            templateHeaders={['nombre', 'apellidos', 'curp', 'fecha_nacimiento', 'grupo', 'estado']}
+            sampleRows={[
+              ['Sofía', 'Hernández Cruz', 'HECS130418MOCRRFO8', '2013-04-18', '1° A', 'Activo'],
+              ['Mateo', 'López Díaz', 'LODM140822MOCRRFA1', '2014-08-22', '1° A', 'Activo'],
+              ['Camila', 'Vázquez Pérez', 'VAPC121105MOCRRFN3', '2012-11-05', '2° A', 'Activo'],
+            ]}
+            columnGuide={[
+              { name: 'nombre', required: true },
+              { name: 'apellidos', required: false },
+              { name: 'curp', required: false },
+              { name: 'fecha_nacimiento', required: false },
+              { name: 'grupo (nombre o ID)', required: false },
+              { name: 'estado', required: false },
+            ]}
+            onImportBatch={api.importarAlumnosBatch}
+            onSuccess={() => fetchData()}
+            primaryColor={primaryColor}
+          />
+        )}
       </Modal>
 
       {/* MODAL: Historial Académico y Alertas del Alumno */}

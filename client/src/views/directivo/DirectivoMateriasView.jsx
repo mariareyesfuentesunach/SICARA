@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
+import CsvImportSection from '../../components/directivo/CsvImportSection';
 import {
   BookOpen,
   PlusCircle,
@@ -13,6 +14,7 @@ import {
   Trash2,
   GraduationCap,
   Layers,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function DirectivoMateriasView({ escuela }) {
@@ -26,6 +28,7 @@ export default function DirectivoMateriasView({ escuela }) {
 
   // Modales
   const [showModal, setShowModal] = useState(false);
+  const [modalTab, setModalTab] = useState('manual'); // 'manual' | 'csv'
   const [editingMateria, setEditingMateria] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -72,6 +75,7 @@ export default function DirectivoMateriasView({ escuela }) {
 
   const handleOpenCreate = () => {
     setEditingMateria(null);
+    setModalTab('manual');
     setFormData({
       nombre_materia: '',
       descripcion: '',
@@ -82,6 +86,7 @@ export default function DirectivoMateriasView({ escuela }) {
 
   const handleOpenEdit = (m) => {
     setEditingMateria(m);
+    setModalTab('manual');
     setFormData({
       nombre_materia: m.nombre_materia || '',
       descripcion: m.descripcion || '',
@@ -302,72 +307,138 @@ export default function DirectivoMateriasView({ escuela }) {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingMateria ? 'Editar Materia' : 'Registrar Nueva Materia'}
-        subtitle="Agregue materias al catálogo institucional del plantel"
-        maxWidth="max-w-md"
+        title={editingMateria ? 'Editar Materia' : 'Registrar / Importar Materias'}
+        subtitle={
+          editingMateria
+            ? 'Actualice la información de la materia en el catálogo institucional'
+            : 'Registre una materia manualmente o importe un archivo CSV (Excel)'
+        }
+        maxWidth={modalTab === 'csv' ? 'max-w-2xl' : 'max-w-md'}
         footer={
-          <>
+          modalTab === 'manual' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="form-materia"
+                disabled={actionLoading}
+                style={{ backgroundColor: primaryColor }}
+                className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {actionLoading ? 'Guardando...' : 'Guardar Materia'}
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               onClick={() => setShowModal(false)}
-              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
             >
-              Cancelar
+              Cerrar
             </button>
-            <button
-              type="submit"
-              form="form-materia"
-              disabled={actionLoading}
-              style={{ backgroundColor: primaryColor }}
-              className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {actionLoading ? 'Guardando...' : 'Guardar Materia'}
-            </button>
-          </>
+          )
         }
       >
-        <form id="form-materia" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Nombre de la Materia <span className="text-status-error">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.nombre_materia}
-              onChange={(e) => setFormData({ ...formData, nombre_materia: e.target.value })}
-              placeholder="Ej. Lengua Indígena y Español, Ciencias"
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Descripción o Enfoque Curricular
-            </label>
-            <textarea
-              rows={3}
-              value={formData.descripcion}
-              onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-              placeholder="Breve descripción del programa..."
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Estado
-            </label>
-            <select
-              value={formData.estado}
-              onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+        {/* Selector de pestañas si no se está editando */}
+        {!editingMateria && (
+          <div className="flex border-b border-app-border mb-4">
+            <button
+              type="button"
+              onClick={() => setModalTab('manual')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'manual'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
             >
-              <option value="Activo">Activo</option>
-              <option value="Inactivo">Inactivo</option>
-            </select>
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>Registro Individual</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab('csv')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'csv'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Importar CSV (Excel)</span>
+            </button>
           </div>
-        </form>
+        )}
+
+        {modalTab === 'manual' ? (
+          <form id="form-materia" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Nombre de la Materia <span className="text-status-error">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.nombre_materia}
+                onChange={(e) => setFormData({ ...formData, nombre_materia: e.target.value })}
+                placeholder="Ej. Lengua Indígena y Español, Ciencias"
+                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Descripción o Enfoque Curricular
+              </label>
+              <textarea
+                rows={3}
+                value={formData.descripcion}
+                onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                placeholder="Breve descripción del programa..."
+                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Estado
+              </label>
+              <select
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+              >
+                <option value="Activo">Activo</option>
+                <option value="Inactivo">Inactivo</option>
+              </select>
+            </div>
+          </form>
+        ) : (
+          <CsvImportSection
+            title="Importar Materias"
+            templateFilename="plantilla_materias_sicara.csv"
+            templateHeaders={['nombre_materia', 'descripcion', 'estado']}
+            sampleRows={[
+              ['Lengua Materna (Español)', 'Desarrollo de habilidades de lectura y escritura', 'Activo'],
+              ['Matemáticas', 'Pensamiento matemático y resolución de problemas', 'Activo'],
+              ['Ciencias Naturales', 'Conocimiento del medio ambiente y ciencias', 'Activo'],
+              ['Historia y Geografía', 'Identidad comunitaria y contexto geográfico', 'Activo'],
+            ]}
+            columnGuide={[
+              { name: 'nombre_materia', required: true },
+              { name: 'descripcion', required: false },
+              { name: 'estado', required: false },
+            ]}
+            onImportBatch={api.importarMateriasBatch}
+            onSuccess={() => fetchData()}
+            primaryColor={primaryColor}
+          />
+        )}
       </Modal>
 
       {/* MODAL: Asignar Materia y Docente a Grupo */}

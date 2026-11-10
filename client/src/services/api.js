@@ -328,4 +328,44 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  // Importación masiva por lote (CSV / Excel)
+  importarGruposBatch: (grupos) =>
+    request('/directivo/grupos/batch', {
+      method: 'POST',
+      body: JSON.stringify({ grupos }),
+    }),
+  importarAlumnosBatch: (alumnos) =>
+    request('/directivo/alumnos/batch', {
+      method: 'POST',
+      body: JSON.stringify({ alumnos }),
+    }),
+  importarDocentesBatch: (docentes) =>
+    request('/directivo/docentes/batch', {
+      method: 'POST',
+      body: JSON.stringify({ docentes }),
+    }),
+  importarMateriasBatch: (materias) =>
+    request('/directivo/materias/batch', {
+      method: 'POST',
+      body: JSON.stringify({ materias }),
+    }),
+
+  // Reenviar correo de alta al docente
+  reenviarCorreoDocente: (id_docente) =>
+    request(`/directivo/docentes/${id_docente}/reenviar-correo`, {
+      method: 'POST',
+    }),
+
+  // Verificación de alta por CURP y definición de contraseña para Docentes
+  verificarCurpDocente: (curp, correo) =>
+    request('/auth/docente/verificar-curp', {
+      method: 'POST',
+      body: JSON.stringify({ curp, correo }),
+    }),
+  establecerPasswordDocente: (data) =>
+    request('/auth/docente/establecer-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

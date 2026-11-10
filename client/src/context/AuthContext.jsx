@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
 
     try {
       const data = await api.getMe();
-      if (data.success && data.user && (data.user.rol === 'Administrador' || data.user.rol === 'Directivo')) {
+      if (data.success && data.user && (data.user.rol === 'Administrador' || data.user.rol === 'Directivo' || data.user.rol === 'Docente')) {
         setUser(data.user);
       } else {
         setUser(null);
@@ -85,6 +85,7 @@ export function AuthProvider({ children }) {
         setSession,
         updateUser,
         isDirectivo: user?.rol === 'Directivo',
+        isDocente: user?.rol === 'Docente',
         isAdmin: user?.rol === 'Administrador',
       }}
     >

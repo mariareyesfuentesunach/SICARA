@@ -595,10 +595,147 @@ async function enviarCorreoRecuperacion({ destinatario, nombreUsuario, token }) 
   }
 }
 
+/**
+ * Envía correo electrónico de bienvenida y alta a un docente registrado.
+ * Incluye botón directo para verificar su alta mediante su CURP y crear su contraseña.
+ */
+async function enviarCorreoAltaDocente({ destinatario, nombreDocente, escuelaNombre, curp }) {
+  const isConfigured = Boolean(
+    process.env.SMTP_HOST && 
+    process.env.SMTP_USER && 
+    process.env.SMTP_PASS
+  );
+
+  const cleanDest = (destinatario || '').trim().toLowerCase();
+  if (!cleanDest) {
+    return { sent: false, error: 'Correo de destinatario no válido.' };
+  }
+
+  const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  const enlaceVerificacion = `${clientBaseUrl}/?verificar_docente=true`;
+
+  if (!isConfigured) {
+    console.log(`[ALTA DOCENTE] Servicio SMTP no configurado. Enlace para ${cleanDest}: ${enlaceVerificacion}`);
+    return { sent: false, error: 'Servicio de correo SMTP no configurado en variables de entorno (.env).' };
+  }
+
+  try {
+    const transporter = crearTransporteSMTP();
+    const nombre = nombreDocente || 'Docente';
+    const escuela = escuelaNombre || 'Plantel Escolar SICARA';
+    const asunto = `Bienvenido(a) a SICARA - Alta como Docente en ${escuela}`;
+
+    const cuerpoTexto = `Estimado(a) ${nombre},\n\n` +
+      `Le informamos que ha sido registrado(a) como Docente en el plantel "${escuela}" dentro de la plataforma oficial SICARA.\n\n` +
+      `Para verificar su alta institucional y crear su contraseña personal de acceso, por favor ingrese al siguiente enlace:\n` +
+      `${enlaceVerificacion}\n\n` +
+      `En dicha pantalla se le solicitará ingresar su Clave Única de Registro de Población (CURP). Una vez validada, podrá establecer su contraseña segura e ingresar a su panel docente.\n\n` +
+      `Atentamente,\n` +
+      `Dirección Escolar de ${escuela}\n` +
+      `Sistema SICARA - Control de Asistencia y Rendimiento Académico en Escuelas Rurales`;
+
+    const cuerpoHtml = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${asunto}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F5F5; margin: 0; padding: 24px; color: #292329; }
+        .container { max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; border: 1px solid #E8E2E4; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+        .header { background: linear-gradient(135deg, #4A1722, #722F37); padding: 32px 28px; text-align: center; color: #FFFFFF; }
+        .badge { display: inline-block; background-color: #E8F5E9; color: #2E7D32; padding: 6px 16px; border-radius: 999px; font-weight: 700; font-size: 13px; text-transform: uppercase; margin-top: 12px; border: 1px solid #C8E6C9; letter-spacing: 0.5px; }
+        .content { padding: 32px 28px; font-size: 14px; line-height: 1.6; color: #292329; }
+        .card-info { background: #FAF7F8; border-left: 4px solid #722F37; padding: 16px 20px; border-radius: 8px; margin: 20px 0; font-size: 13px; }
+        .footer { background: #F8F5F5; padding: 20px 28px; text-align: center; font-size: 12px; color: #685D68; border-top: 1px solid #E8E2E4; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 26px; font-weight: 800; letter-spacing: 1.5px;">SICARA</h1>
+          <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.8px;">Escuelas Rurales</p>
+          <div class="badge">✓ ALTA DE DOCENTE REGISTRADA</div>
+        </div>
+
+        <div class="content">
+          <p style="font-size: 16px; margin-top: 0;">Estimado(a) <strong>${nombre}</strong>,</p>
+          <p>
+            Le informamos que la dirección de su plantel escolar lo ha registrado exitosamente como <strong>Docente</strong> en la plataforma educativa oficial <strong>SICARA</strong>.
+          </p>
+
+          <div class="card-info">
+            <p style="margin: 0 0 6px 0;"><strong>Institución Escolar:</strong> ${escuela}</p>
+            <p style="margin: 0 0 6px 0;"><strong>Correo registrado:</strong> <span style="font-family: monospace;">${cleanDest}</span></p>
+            ${curp ? `<p style="margin: 0;"><strong>CURP para validación:</strong> <span style="font-family: monospace; font-weight: bold; color: #722F37;">${curp.trim().toUpperCase()}</span></p>` : ''}
+          </div>
+
+          <p>
+            Para resguardar su privacidad, <strong>únicamente usted puede definir su contraseña</strong>. Por favor presione el siguiente botón para validar su identidad con su <strong>CURP</strong> y crear su contraseña de acceso:
+          </p>
+
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 30px 0;">
+            <tr>
+              <td align="center">
+                <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                  <tr>
+                    <td align="center" style="background-color: #722F37; border-radius: 8px; box-shadow: 0 4px 8px rgba(114, 47, 55, 0.25);">
+                      <a href="${enlaceVerificacion}" target="_blank" style="display: inline-block; padding: 15px 34px; font-size: 14px; font-weight: bold; color: #FFFFFF; text-decoration: none; border-radius: 8px; letter-spacing: 0.5px;">
+                        VERIFICAR MI ALTA Y CREAR CONTRASEÑA
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <div style="background-color: #FFF8E1; border: 1px solid #FFE082; padding: 14px 18px; border-radius: 8px; font-size: 12px; color: #795548;">
+            <strong>¿Cómo ingresar a su panel?</strong><br>
+            1. Haga clic en el botón superior.<br>
+            2. Introduzca su <strong>CURP</strong> para comprobar su alta oficial.<br>
+            3. Ingrese su nueva contraseña (mínimo 8 caracteres, con mayúscula, minúscula, número y símbolo).<br>
+            4. ¡Listo! El sistema iniciará su sesión como docente de inmediato.
+          </div>
+
+          <p style="margin-top: 30px; border-top: 1px solid #E8E2E4; padding-top: 18px; font-size: 13px;">
+            <strong>Dirección Escolar • ${escuela}</strong><br>
+            <span style="font-size: 12px; color: #685D68;">Sistema SICARA • Plataforma de Gestión Escolar Rural</span>
+          </p>
+        </div>
+
+        <div class="footer">
+          Este es un correo institucional oficial generado automáticamente por el sistema SICARA.
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const fromAddress = process.env.SMTP_FROM || (process.env.SMTP_USER ? `"SICARA Notificaciones" <${process.env.SMTP_USER}>` : undefined);
+
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: cleanDest,
+      subject: asunto,
+      text: cuerpoTexto,
+      html: cuerpoHtml,
+    });
+
+    console.log(`[ALTA DOCENTE] Correo enviado a: ${cleanDest}. MessageID: ${info.messageId}`);
+    return { sent: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[ALTA DOCENTE] Error al despachar correo:', err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 module.exports = {
   crearTransporteSMTP,
   verificarConexionSMTP,
   generarComprobantePDF,
   notificarEscuelaPorCorreo,
   enviarCorreoRecuperacion,
+  enviarCorreoAltaDocente,
 };

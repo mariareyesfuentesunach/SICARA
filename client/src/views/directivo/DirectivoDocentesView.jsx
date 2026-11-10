@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
 import Badge from '../../components/Badge';
+import CsvImportSection from '../../components/directivo/CsvImportSection';
 import {
   GraduationCap,
   UserPlus,
@@ -14,6 +15,10 @@ import {
   Phone,
   Lock,
   Layers,
+  FileSpreadsheet,
+  Send,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function DirectivoDocentesView({ escuela }) {
@@ -25,8 +30,10 @@ export default function DirectivoDocentesView({ escuela }) {
 
   // Modal Crear / Editar
   const [showModal, setShowModal] = useState(false);
+  const [modalTab, setModalTab] = useState('manual'); // 'manual' | 'csv'
   const [editingDocente, setEditingDocente] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [resendingEmailId, setResendingEmailId] = useState(null);
 
   // Modal Asignaciones
   const [showAsigModal, setShowAsigModal] = useState(false);
@@ -34,12 +41,11 @@ export default function DirectivoDocentesView({ escuela }) {
   const [asignaciones, setAsignaciones] = useState([]);
   const [loadingAsig, setLoadingAsig] = useState(false);
 
-  // Formulario
+  // Formulario (Sin campo de contraseña para creación: el docente define su propia contraseña mediante CURP)
   const [formData, setFormData] = useState({
     nombre: '',
     apellidos: '',
     correo: '',
-    contrasena: '',
     curp: '',
     especialidad: '',
     telefono: '',
@@ -77,11 +83,11 @@ export default function DirectivoDocentesView({ escuela }) {
 
   const handleOpenCreate = () => {
     setEditingDocente(null);
+    setModalTab('manual');
     setFormData({
       nombre: '',
       apellidos: '',
       correo: '',
-      contrasena: '',
       curp: '',
       especialidad: '',
       telefono: '',
@@ -92,17 +98,31 @@ export default function DirectivoDocentesView({ escuela }) {
 
   const handleOpenEdit = (doc) => {
     setEditingDocente(doc);
+    setModalTab('manual');
     setFormData({
       nombre: doc.nombre || '',
       apellidos: doc.apellidos || '',
       correo: doc.correo || '',
-      contrasena: '',
       curp: doc.curp || '',
       especialidad: doc.especialidad || '',
       telefono: doc.telefono || '',
       estado: doc.estado || 'Activo',
     });
     setShowModal(true);
+  };
+
+  const handleReenviarCorreo = async (doc) => {
+    setResendingEmailId(doc.id_docente);
+    try {
+      const res = await api.reenviarCorreoDocente(doc.id_docente);
+      if (res.success) {
+        showToast(res.message, 'success');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al reenviar correo al docente.', 'error');
+    } finally {
+      setResendingEmailId(null);
+    }
   };
 
   const handleSubmitForm = async (e) => {
@@ -113,10 +133,6 @@ export default function DirectivoDocentesView({ escuela }) {
     }
     if (!editingDocente && !formData.correo.trim()) {
       showToast('El correo electrónico es obligatorio.', 'warning');
-      return;
-    }
-    if (!editingDocente && (!formData.contrasena || formData.contrasena.length < 6)) {
-      showToast('La contraseña inicial debe tener al menos 6 caracteres.', 'warning');
       return;
     }
 
@@ -132,7 +148,7 @@ export default function DirectivoDocentesView({ escuela }) {
       } else {
         const res = await api.createDirectivoDocente(formData);
         if (res.success) {
-          showToast('Docente registrado exitosamente.', 'success');
+          showToast(res.message || 'Docente registrado exitosamente. Se envió el correo de alta.', 'success');
           setShowModal(false);
           fetchDocentes();
         }
@@ -285,13 +301,23 @@ export default function DirectivoDocentesView({ escuela }) {
                       <Badge status={doc.estado || 'Activo'} />
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleOpenEdit(doc)}
-                        className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
-                        title="Editar docente"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleReenviarCorreo(doc)}
+                          disabled={resendingEmailId === doc.id_docente}
+                          className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
+                          title="Reenviar correo de alta e instrucciones de CURP al docente"
+                        >
+                          <Send className={`w-4 h-4 ${resendingEmailId === doc.id_docente ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => handleOpenEdit(doc)}
+                          className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
+                          title="Editar docente"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -305,143 +331,208 @@ export default function DirectivoDocentesView({ escuela }) {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingDocente ? 'Modificar Datos de Docente' : 'Registrar Nuevo Docente'}
-        subtitle="Se creará o actualizará la cuenta de usuario con rol DOCENTE en SICARA"
-        maxWidth="max-w-xl"
+        title={editingDocente ? 'Modificar Datos de Docente' : 'Registrar / Importar Docentes'}
+        subtitle={
+          editingDocente
+            ? 'Actualice la información y credenciales del docente en SICARA'
+            : 'Registre un docente individualmente o importe una lista desde un archivo CSV (Excel)'
+        }
+        maxWidth={modalTab === 'csv' ? 'max-w-2xl' : 'max-w-xl'}
         footer={
-          <>
+          modalTab === 'manual' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="form-docente"
+                disabled={actionLoading}
+                style={{ backgroundColor: primaryColor }}
+                className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {actionLoading ? 'Guardando...' : 'Guardar Docente'}
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               onClick={() => setShowModal(false)}
-              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer transition-colors"
+              className="px-4 py-2 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-semibold text-xs cursor-pointer"
             >
-              Cancelar
+              Cerrar
             </button>
-            <button
-              type="submit"
-              form="form-docente"
-              disabled={actionLoading}
-              style={{ backgroundColor: primaryColor }}
-              className="px-4 py-2 rounded-subtle text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {actionLoading ? 'Guardando...' : 'Guardar Docente'}
-            </button>
-          </>
+          )
         }
       >
-        <form id="form-docente" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Nombre(s) <span className="text-status-error">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.nombre}
-                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                placeholder="Ej. María de Jesús"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Apellidos
-              </label>
-              <input
-                type="text"
-                value={formData.apellidos}
-                onChange={(e) => setFormData({ ...formData, apellidos: e.target.value })}
-                placeholder="Ej. López Hernández"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Correo Electrónico <span className="text-status-error">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                disabled={!!editingDocente}
-                value={formData.correo}
-                onChange={(e) => setFormData({ ...formData, correo: e.target.value })}
-                placeholder="docente@escuela.edu.mx"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs disabled:bg-gray-100"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                {editingDocente ? 'Cambiar Contraseña (opcional)' : 'Contraseña Inicial *'}
-              </label>
-              <input
-                type="password"
-                required={!editingDocente}
-                value={formData.contrasena}
-                onChange={(e) => setFormData({ ...formData, contrasena: e.target.value })}
-                placeholder={editingDocente ? 'Dejar en blanco para conservar' : 'Mínimo 6 caracteres'}
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                CURP
-              </label>
-              <input
-                type="text"
-                maxLength={18}
-                value={formData.curp}
-                onChange={(e) => setFormData({ ...formData, curp: e.target.value.toUpperCase() })}
-                placeholder="18 caracteres"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary font-mono text-xs uppercase"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Especialidad
-              </label>
-              <input
-                type="text"
-                value={formData.especialidad}
-                onChange={(e) => setFormData({ ...formData, especialidad: e.target.value })}
-                placeholder="Ej. Matemáticas, Primaria"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-                Teléfono
-              </label>
-              <input
-                type="text"
-                value={formData.telefono}
-                onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                placeholder="Ej. 9611234567"
-                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
-              Estado de la Cuenta
-            </label>
-            <select
-              value={formData.estado}
-              onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-              className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+        {/* Selector de pestañas si no se está editando */}
+        {!editingDocente && (
+          <div className="flex border-b border-app-border mb-4">
+            <button
+              type="button"
+              onClick={() => setModalTab('manual')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'manual'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
             >
-              <option value="Activo">Activo (Puede acceder a SICARA)</option>
-              <option value="Inactivo">Inactivo (Acceso suspendido)</option>
-            </select>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Registro Individual</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab('csv')}
+              className={`flex-1 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                modalTab === 'csv'
+                  ? 'border-vino-primary text-vino-primary bg-vino-soft/30'
+                  : 'border-transparent text-app-muted hover:text-app-text'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Importar CSV (Excel)</span>
+            </button>
           </div>
-        </form>
+        )}
+
+        {modalTab === 'manual' ? (
+          <form id="form-docente" onSubmit={handleSubmitForm} className="space-y-4 text-xs">
+            {/* Aviso de Privacidad y Seguridad */}
+            {!editingDocente && (
+              <div className="p-3.5 rounded-card bg-vino-soft/30 border border-vino-light/40 text-vino-dark text-[11px] flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-vino-primary shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong className="font-bold">Privacidad de Contraseña:</strong> El directivo ya no asigna contraseñas. Al registrar al docente, el sistema le enviará automáticamente un correo electrónico con un enlace oficial donde podrá comprobar su alta mediante su <strong>CURP</strong> y definir su contraseña personal.
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Nombre(s) <span className="text-status-error">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  placeholder="Ej. María de Jesús"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Apellidos
+                </label>
+                <input
+                  type="text"
+                  value={formData.apellidos}
+                  onChange={(e) => setFormData({ ...formData, apellidos: e.target.value })}
+                  placeholder="Ej. López Hernández"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Correo Electrónico <span className="text-status-error">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  disabled={!!editingDocente}
+                  value={formData.correo}
+                  onChange={(e) => setFormData({ ...formData, correo: e.target.value })}
+                  placeholder="docente@escuela.edu.mx"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  CURP <span className="text-vino-primary font-bold">(Para verificación de alta)</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={18}
+                  value={formData.curp}
+                  onChange={(e) => setFormData({ ...formData, curp: e.target.value.toUpperCase() })}
+                  placeholder="18 caracteres"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary font-mono text-xs uppercase"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Especialidad
+                </label>
+                <input
+                  type="text"
+                  value={formData.especialidad}
+                  onChange={(e) => setFormData({ ...formData, especialidad: e.target.value })}
+                  placeholder="Ej. Matemáticas, Primaria"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                  Teléfono
+                </label>
+                <input
+                  type="text"
+                  value={formData.telefono}
+                  onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                  placeholder="Ej. 9611234567"
+                  className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary text-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold text-app-text mb-1 uppercase tracking-wider">
+                Estado de la Cuenta
+              </label>
+              <select
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                className="w-full px-3 py-2 rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-xs"
+              >
+                <option value="Activo">Activo (Puede acceder a SICARA)</option>
+                <option value="Inactivo">Inactivo (Acceso suspendido)</option>
+              </select>
+            </div>
+          </form>
+        ) : (
+          <CsvImportSection
+            title="Importar Docentes"
+            templateFilename="plantilla_docentes_sicara.csv"
+            templateHeaders={['nombre', 'apellidos', 'correo', 'curp', 'especialidad', 'telefono', 'estado']}
+            sampleRows={[
+              ['María', 'López Hernández', 'maria.lopez@escuela.edu.mx', 'LOHM800101MDFRRN01', 'Primaria General', '9611234567', 'Activo'],
+              ['Carlos', 'Ramírez Morales', 'carlos.ramirez@escuela.edu.mx', 'RAMC820315MDFRRN02', 'Matemáticas', '9617654321', 'Activo'],
+            ]}
+            columnGuide={[
+              { name: 'nombre', required: true },
+              { name: 'correo', required: true },
+              { name: 'curp (para verificación)', required: false },
+              { name: 'apellidos', required: false },
+              { name: 'especialidad', required: false },
+              { name: 'telefono', required: false },
+              { name: 'estado', required: false },
+            ]}
+            onImportBatch={api.importarDocentesBatch}
+            onSuccess={() => fetchDocentes()}
+            primaryColor={primaryColor}
+          />
+        )}
       </Modal>
 
       {/* MODAL: Ver Carga Académica de Asignaciones */}
