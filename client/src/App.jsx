@@ -26,11 +26,14 @@ import SolicitudRegistroModal from './views/landing/SolicitudRegistroModal';
 // Pantalla de Activación Segura de Cuenta de Directivo
 import ActivacionView from './views/ActivacionView';
 
+// Pantalla de Restablecimiento de Contraseña
+import RecuperarPasswordView from './views/RecuperarPasswordView';
+
 export default function App() {
   const { user, isAuthenticated, loading, logout, isDirectivo } = useAuth();
   const { showToast } = useToast();
 
-  // Detección de token de activación en URL (ej: /?activacion=abcdef123...)
+  // Detección de parámetros en URL (ej: /?activacion=..., /?login=true, /?recuperar=..., /?correo=...)
   const [activationToken, setActivationToken] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -40,10 +43,39 @@ export default function App() {
     }
   });
 
+  const [recoveryToken, setRecoveryToken] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const rec = params.get('recuperar');
+      return rec ? rec : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [initialEmail, setInitialEmail] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('correo') || '';
+    } catch {
+      return '';
+    }
+  });
+
   // Estado para la navegación pública (cuando no está autenticado)
-  // 'landing' -> Muestra la nueva Landing Page de bienvenida
-  // 'login'   -> Muestra el formulario de inicio de sesión original
-  const [publicView, setPublicView] = useState('landing');
+  // 'landing'   -> Muestra la Landing Page de bienvenida
+  // 'login'     -> Muestra la ventana de inicio de sesión
+  // 'recuperar' -> Muestra la ventana de restablecimiento de contraseña
+  const [publicView, setPublicView] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('login') === 'true') return 'login';
+      if (params.get('recuperar')) return 'recuperar';
+      return 'landing';
+    } catch {
+      return 'landing';
+    }
+  });
   const [showSolicitudModal, setShowSolicitudModal] = useState(false);
 
   const [currentView, setCurrentView] = useState('dashboard');
@@ -123,7 +155,7 @@ export default function App() {
   }
 
   // Si existe un token de activación en la URL (ej: /?activacion=...)
-  // y el usuario aún no está autenticado, renderizar directamente ActivacionView
+  // y el usuario aún no está autenticado, renderizar directamente ActivacionView (Ventana 1)
   if (activationToken && !isAuthenticated) {
     return (
       <ActivacionView
@@ -137,7 +169,28 @@ export default function App() {
     );
   }
 
-  // Si no está autenticado -> Flujo público con Landing Page como bienvenida
+  // Si existe un enlace de recuperación en la URL (ej: /?recuperar=... o vista recuperar)
+  // y el usuario aún no está autenticado, renderizar directamente RecuperarPasswordView (Ventana 3)
+  if ((recoveryToken || publicView === 'recuperar') && !isAuthenticated) {
+    return (
+      <RecuperarPasswordView
+        token={recoveryToken}
+        initialEmail={initialEmail}
+        onCancel={() => {
+          setRecoveryToken(null);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setPublicView('landing');
+        }}
+        onGoToLogin={() => {
+          setRecoveryToken(null);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setPublicView('login');
+        }}
+      />
+    );
+  }
+
+  // Si no está autenticado -> Flujo público
   if (!isAuthenticated) {
     if (publicView === 'login') {
       return (
@@ -145,13 +198,20 @@ export default function App() {
           {/* Botón flotante para regresar a la Landing Page */}
           <div className="fixed top-4 left-4 z-50">
             <button
-              onClick={() => setPublicView('landing')}
+              onClick={() => {
+                window.history.replaceState({}, document.title, window.location.pathname);
+                setPublicView('landing');
+              }}
               className="px-3.5 py-2 rounded-full bg-white text-app-text hover:text-vino-primary shadow-soft border border-app-border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <span>← Volver al inicio</span>
             </button>
           </div>
-          <LoginView />
+          {/* Ventana 2: Inicio de sesión en SICARA con correo prellenado si viene en URL */}
+          <LoginView
+            initialEmail={initialEmail}
+            onGoToRecuperar={() => setPublicView('recuperar')}
+          />
         </div>
       );
     }

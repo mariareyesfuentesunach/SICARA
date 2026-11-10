@@ -1,10 +1,54 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const { directivoMiddleware } = require('../middleware/auth');
+const { directivoMiddleware, JWT_SECRET } = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-// Todas las rutas de este router requieren que el usuario sea Directivo y tenga id_escuela
+// ==========================================
+// RUTA DE LOGO INSTITUCIONAL
+// Accesible públicamente por ?escuela=:id o mediante token para etiquetas <img> en el navegador
+// ==========================================
+router.get('/logo', async (req, res) => {
+  try {
+    let id_escuela = req.query.escuela || req.query.id_escuela;
+
+    if (!id_escuela) {
+      const authHeader = req.headers['authorization'];
+      const queryToken = req.query.token;
+      const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (authHeader || queryToken);
+      if (rawToken) {
+        try {
+          const decoded = jwt.verify(rawToken, JWT_SECRET);
+          id_escuela = decoded.id_escuela;
+        } catch (e) {}
+      }
+    }
+
+    if (!id_escuela) {
+      return res.status(404).send('Sin logotipo');
+    }
+
+    const result = await db.query(
+      `SELECT logo_escuela, tipo_logo FROM escuelas WHERE id_escuela = $1`,
+      [id_escuela]
+    );
+
+    if (result.rows.length === 0 || !result.rows[0].logo_escuela) {
+      return res.status(404).send('Sin logotipo');
+    }
+
+    const { logo_escuela, tipo_logo } = result.rows[0];
+    res.setHeader('Content-Type', tipo_logo || 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(logo_escuela);
+  } catch (err) {
+    console.error('Error al entregar logo:', err);
+    return res.status(500).send('Error');
+  }
+});
+
+// Todas las demás rutas de este router requieren que el usuario sea Directivo y tenga id_escuela
 router.use(directivoMiddleware);
 
 // ==========================================
@@ -1388,46 +1432,45 @@ router.get('/configuracion', async (req, res) => {
   }
 });
 
-// Obtener logo binario de la escuela
-router.get('/logo', async (req, res) => {
-  try {
-    const id_escuela = req.user.id_escuela;
-    const result = await db.query(
-      `SELECT logo_escuela, tipo_logo FROM escuelas WHERE id_escuela = $1`,
-      [id_escuela]
-    );
-
-    if (result.rows.length === 0 || !result.rows[0].logo_escuela) {
-      return res.status(404).send('Sin logotipo');
-    }
-
-    const { logo_escuela, tipo_logo } = result.rows[0];
-    res.setHeader('Content-Type', tipo_logo || 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.send(logo_escuela);
-  } catch (err) {
-    console.error('Error al entregar logo:', err);
-    return res.status(500).send('Error');
-  }
-});
-
 // Guardar configuración institucional (nombre visible, colores, logo)
 router.put('/configuracion', async (req, res) => {
   try {
     const id_escuela = req.user.id_escuela;
-    const { nombre_escuela, color_primario, color_secundario, color_complementario, logoBase64, tipo_logo } = req.body;
+    const { nombre_escuela, color_primario, color_secundario, color_complementario, logoBase64, tipo_logo, eliminar_logo } = req.body;
 
     if (!nombre_escuela || !nombre_escuela.trim()) {
       return res.status(400).json({ success: false, message: 'El nombre institucional es obligatorio.' });
     }
 
     let logoBuffer = null;
-    if (logoBase64 && logoBase64.startsWith('data:')) {
-      const base64Data = logoBase64.split(',')[1];
-      logoBuffer = Buffer.from(base64Data, 'base64');
+    if (logoBase64 && typeof logoBase64 === 'string') {
+      const base64Data = logoBase64.includes(',') ? logoBase64.split(',')[1] : logoBase64;
+      try {
+        logoBuffer = Buffer.from(base64Data, 'base64');
+      } catch (errB64) {
+        console.error('Error al decodificar buffer base64 de logotipo:', errB64);
+      }
     }
 
-    if (logoBuffer) {
+    if (eliminar_logo) {
+      await db.query(
+        `UPDATE escuelas
+         SET nombre_escuela = $1,
+             color_primario = COALESCE($2, color_primario),
+             color_secundario = COALESCE($3, color_secundario),
+             color_complementario = COALESCE($4, color_complementario),
+             logo_escuela = NULL,
+             tipo_logo = NULL
+         WHERE id_escuela = $5`,
+        [
+          nombre_escuela.trim(),
+          color_primario || '#722F37',
+          color_secundario || '#4A1722',
+          color_complementario || '#A64D5A',
+          id_escuela,
+        ]
+      );
+    } else if (logoBuffer && logoBuffer.length > 0) {
       await db.query(
         `UPDATE escuelas
          SET nombre_escuela = $1,

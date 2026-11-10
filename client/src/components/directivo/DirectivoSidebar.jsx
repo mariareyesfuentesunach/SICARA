@@ -67,7 +67,7 @@ export default function DirectivoSidebar({
             <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center shrink-0 border border-white/20 overflow-hidden shadow-inner">
               {escuela?.tiene_logo ? (
                 <img
-                  src={`/api/directivo/logo?t=${Date.now()}`}
+                  src={`/api/directivo/logo?escuela=${escuela?.id_escuela}&t=${Date.now()}`}
                   alt="Logo Escuela"
                   className="w-full h-full object-contain"
                   onError={(e) => {

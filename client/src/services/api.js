@@ -78,6 +78,20 @@ export const api = {
       body: JSON.stringify({ correo }),
     }),
 
+  // Recuperación y restablecimiento de contraseña
+  solicitarRecuperacionPassword: (correo) =>
+    request('/auth/recuperar/solicitar', {
+      method: 'POST',
+      body: JSON.stringify({ correo }),
+    }),
+  verificarTokenRecuperacion: (token) =>
+    request(`/auth/recuperar/verificar/${encodeURIComponent(token)}`),
+  completarRecuperacionPassword: (data) =>
+    request('/auth/recuperar/completar', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   // Dashboard Administrador General
   getDashboardStats: () => request('/dashboard/stats'),
 

@@ -263,12 +263,22 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
     if (estado === 'Aprobada') {
       asunto = 'Solicitud de registro de escuela aprobada - SICARA';
       
+      const urlCrearPassword = enlaceActivacion || `${clientBaseUrl}/?activacion=solicitar&correo=${encodeURIComponent(cleanDest)}`;
+      const urlIniciarSesion = `${clientBaseUrl}/?login=true&correo=${encodeURIComponent(cleanDest)}`;
+      const urlRestablecerPassword = `${clientBaseUrl}/?recuperar=solicitar&correo=${encodeURIComponent(cleanDest)}`;
+
       cuerpoTexto = `Hola, ${nombreResp}.\n\n` +
         `Nos complace informarle que la solicitud de registro de la escuela ${nombreEsc} en SICARA ha sido aprobada correctamente.\n\n` +
         `A partir de este momento, la escuela se encuentra registrada en la plataforma.\n\n` +
-        (enlaceActivacion
-          ? `Para activar su cuenta como Directivo y establecer su contraseña segura, ingrese al siguiente enlace:\n${enlaceActivacion}\n\n`
-          : `Para continuar con la activación de su cuenta como Directivo, siga las instrucciones que recibirá en el correo de activación correspondiente.\n\n`) +
+        `OPCIÓN 1. ¿El Administrador General registró tu escuela y todavía no tienes una contraseña?\n` +
+        `Si el Administrador General realizó el registro de tu escuela, podrás crear tu contraseña personal y segura para acceder por primera vez a SICARA.\n` +
+        `CREAR MI CONTRASEÑA:\n${urlCrearPassword}\n\n` +
+        `OPCIÓN 2. ¿Realizaste personalmente tu solicitud y ya registraste una contraseña?\n` +
+        `Si durante tu solicitud proporcionaste tu correo electrónico y contraseña, puedes ingresar directamente a SICARA. No necesitas crear otra contraseña.\n` +
+        `INICIAR SESIÓN EN SICARA:\n${urlIniciarSesion}\n\n` +
+        `OPCIÓN 3. ¿Ya tenías una contraseña, pero la olvidaste?\n` +
+        `Si no recuerdas tu contraseña, puedes recuperar el acceso a tu cuenta. Ingresa tu correo electrónico y recibirás un enlace seguro para establecer una nueva contraseña.\n` +
+        `RESTABLECER MI CONTRASEÑA:\n${urlRestablecerPassword}\n\n` +
         `Gracias por formar parte de SICARA.\n\n` +
         `Sistema SICARA\n` +
         `Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales.`;
@@ -282,13 +292,12 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
         <title>${asunto}</title>
         <style>
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F5F5; margin: 0; padding: 24px; color: #292329; }
-          .container { max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; border: 1px solid #E8E2E4; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+          .container { max-width: 620px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; border: 1px solid #E8E2E4; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
           .header { background: linear-gradient(135deg, #4A1722, #722F37); padding: 32px 28px; text-align: center; color: #FFFFFF; }
           .badge { display: inline-block; background-color: #E8F5E9; color: #1B5E20; padding: 6px 16px; border-radius: 999px; font-weight: 700; font-size: 13px; text-transform: uppercase; margin-top: 12px; border: 1px solid #C8E6C9; letter-spacing: 0.5px; }
           .content { padding: 32px 28px; font-size: 15px; line-height: 1.6; color: #292329; }
           .school-card { background: #FAF7F8; border-left: 4px solid #722F37; padding: 16px; border-radius: 8px; margin: 20px 0; }
           .school-title { font-weight: 700; color: #4A1722; font-size: 16px; margin: 0 0 6px 0; }
-          .btn-activar { display: inline-block; background-color: #722F37; color: #FFFFFF !important; font-weight: bold; text-decoration: none; padding: 14px 32px; border-radius: 999px; font-size: 14px; margin: 16px 0; box-shadow: 0 4px 10px rgba(114,47,55,0.3); }
           .footer { background: #F8F5F5; padding: 20px 28px; text-align: center; font-size: 12px; color: #685D68; border-top: 1px solid #E8E2E4; }
         </style>
       </head>
@@ -310,17 +319,93 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
             </div>
 
             <p>A partir de este momento, la escuela se encuentra registrada en la plataforma.</p>
-            
-            ${
-              enlaceActivacion
-                ? `<div style="text-align: center; margin: 28px 0;">
-                    <a href="${enlaceActivacion}" class="btn-activar" target="_blank">
-                      ACTIVAR CUENTA DE DIRECTIVO
-                    </a>
-                    <p style="font-size: 12px; color: #777; margin-top: 8px;">Este enlace tiene una vigencia de 48 horas.</p>
-                  </div>`
-                : `<p>Para continuar con la activación de su cuenta como Directivo, siga las instrucciones que recibirá en el correo de activación correspondiente.</p>`
-            }
+
+            <!-- OPCIÓN 1 -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0; background-color: #FAF7F8; border: 1px solid #E8E2E4; border-radius: 12px; overflow: hidden;">
+              <tr>
+                <td style="padding: 20px 22px;">
+                  <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #4A1722; line-height: 1.4;">
+                    OPCIÓN 1. ¿El Administrador General registró tu escuela y todavía no tienes una contraseña?
+                  </h3>
+                  <p style="margin: 0 0 16px 0; font-size: 13px; color: #555555; line-height: 1.5;">
+                    Si el Administrador General realizó el registro de tu escuela, podrás crear tu contraseña personal y segura para acceder por primera vez a SICARA.
+                  </p>
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center">
+                        <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                          <tr>
+                            <td align="center" style="background-color: #722F37; border-radius: 8px;">
+                              <a href="${urlCrearPassword}" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 13px; font-weight: bold; color: #FFFFFF; text-decoration: none; border-radius: 8px; letter-spacing: 0.5px;">
+                                CREAR MI CONTRASEÑA
+                              </a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- OPCIÓN 2 -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0; background-color: #FAF7F8; border: 1px solid #E8E2E4; border-radius: 12px; overflow: hidden;">
+              <tr>
+                <td style="padding: 20px 22px;">
+                  <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #4A1722; line-height: 1.4;">
+                    OPCIÓN 2. ¿Realizaste personalmente tu solicitud y ya registraste una contraseña?
+                  </h3>
+                  <p style="margin: 0 0 16px 0; font-size: 13px; color: #555555; line-height: 1.5;">
+                    Si durante tu solicitud proporcionaste tu correo electrónico y contraseña, puedes ingresar directamente a SICARA. No necesitas crear otra contraseña.
+                  </p>
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center">
+                        <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                          <tr>
+                            <td align="center" style="background-color: #4A1722; border-radius: 8px;">
+                              <a href="${urlIniciarSesion}" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 13px; font-weight: bold; color: #FFFFFF; text-decoration: none; border-radius: 8px; letter-spacing: 0.5px;">
+                                INICIAR SESIÓN EN SICARA
+                              </a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- OPCIÓN 3 -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0; background-color: #FAF7F8; border: 1px solid #E8E2E4; border-radius: 12px; overflow: hidden;">
+              <tr>
+                <td style="padding: 20px 22px;">
+                  <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 700; color: #4A1722; line-height: 1.4;">
+                    OPCIÓN 3. ¿Ya tenías una contraseña, pero la olvidaste?
+                  </h3>
+                  <p style="margin: 0 0 16px 0; font-size: 13px; color: #555555; line-height: 1.5;">
+                    Si no recuerdas tu contraseña, puedes recuperar el acceso a tu cuenta. Ingresa tu correo electrónico y recibirás un enlace seguro para establecer una nueva contraseña.
+                  </p>
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center">
+                        <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                          <tr>
+                            <td align="center" style="background-color: #A64D5A; border-radius: 8px;">
+                              <a href="${urlRestablecerPassword}" target="_blank" style="display: inline-block; padding: 13px 28px; font-size: 13px; font-weight: bold; color: #FFFFFF; text-decoration: none; border-radius: 8px; letter-spacing: 0.5px;">
+                                RESTABLECER MI CONTRASEÑA
+                              </a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
 
             <p style="margin-top: 24px;">Gracias por formar parte de SICARA.</p>
             
@@ -393,9 +478,127 @@ async function notificarEscuelaPorCorreo({ destinatario, nombreEscuela, estado, 
   }
 }
 
+/**
+ * Envía correo electrónico con enlace seguro para restablecer contraseña.
+ * Utiliza plantilla con colores institucionales (#A64D5A) y botón centrado compatible con clientes de correo.
+ */
+async function enviarCorreoRecuperacion({ destinatario, nombreUsuario, token }) {
+  const isConfigured = Boolean(
+    process.env.SMTP_HOST && 
+    process.env.SMTP_USER && 
+    process.env.SMTP_PASS
+  );
+
+  const cleanDest = (destinatario || '').trim().toLowerCase();
+  if (!cleanDest) {
+    return { sent: false, error: 'Correo de destinatario no válido.' };
+  }
+
+  if (!isConfigured) {
+    console.log(`[RECUPERACIÓN CORREO] Servicio SMTP no configurado. Token para ${cleanDest}: ${token}`);
+    return { sent: false, error: 'Servicio SMTP no configurado en variables de entorno.' };
+  }
+
+  try {
+    const transporter = crearTransporteSMTP();
+    const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const enlaceRecuperacion = `${clientBaseUrl}/?recuperar=${encodeURIComponent(token)}`;
+    const nombre = nombreUsuario || 'Usuario';
+    const asunto = 'Restablecer contraseña de acceso - SICARA';
+
+    const cuerpoTexto = `Hola, ${nombre}.\n\n` +
+      `Hemos recibido una solicitud para restablecer la contraseña de acceso a tu cuenta en SICARA.\n\n` +
+      `Para establecer tu nueva contraseña de forma segura, haz clic en el siguiente enlace:\n` +
+      `${enlaceRecuperacion}\n\n` +
+      `Este enlace es seguro, de un solo uso y tiene una vigencia de 2 horas.\n\n` +
+      `Si tú no solicitaste este cambio, puedes ignorar este mensaje; tu contraseña actual no será modificada.\n\n` +
+      `Sistema SICARA\n` +
+      `Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales.`;
+
+    const cuerpoHtml = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${asunto}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F5F5; margin: 0; padding: 24px; color: #292329; }
+        .container { max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; border: 1px solid #E8E2E4; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+        .header { background: linear-gradient(135deg, #4A1722, #722F37); padding: 32px 28px; text-align: center; color: #FFFFFF; }
+        .badge { display: inline-block; background-color: #FFF3E0; color: #E65100; padding: 6px 16px; border-radius: 999px; font-weight: 700; font-size: 13px; text-transform: uppercase; margin-top: 12px; border: 1px solid #FFE0B2; letter-spacing: 0.5px; }
+        .content { padding: 32px 28px; font-size: 15px; line-height: 1.6; color: #292329; }
+        .footer { background: #F8F5F5; padding: 20px 28px; text-align: center; font-size: 12px; color: #685D68; border-top: 1px solid #E8E2E4; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 24px; letter-spacing: 1px;">SICARA</h1>
+          <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Escuelas Rurales</p>
+          <div class="badge">SEGURIDAD DE ACCESO</div>
+        </div>
+        <div class="content">
+          <p>Hola, <strong>${nombre}</strong>.</p>
+          <p>Hemos recibido una solicitud para restablecer la contraseña de acceso a tu cuenta en <strong>SICARA</strong>.</p>
+          <p>Para establecer una nueva contraseña segura, presiona el siguiente botón:</p>
+
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 28px 0;">
+            <tr>
+              <td align="center">
+                <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
+                  <tr>
+                    <td align="center" style="background-color: #A64D5A; border-radius: 8px;">
+                      <a href="${enlaceRecuperacion}" target="_blank" style="display: inline-block; padding: 14px 32px; font-size: 14px; font-weight: bold; color: #FFFFFF; text-decoration: none; border-radius: 8px; letter-spacing: 0.5px;">
+                        RESTABLECER MI CONTRASEÑA
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <div style="background-color: #FAF7F8; border-left: 4px solid #A64D5A; padding: 14px 18px; border-radius: 6px; margin: 20px 0; font-size: 13px; color: #555;">
+            <p style="margin: 0;"><strong>Aviso de seguridad:</strong> Este enlace es personal, seguro y tiene una vigencia de <strong>2 horas</strong>.</p>
+            <p style="margin: 6px 0 0 0;">Si no solicitaste este cambio de contraseña, puedes ignorar este correo; tu cuenta continuará protegida y no se realizará ninguna modificación.</p>
+          </div>
+
+          <p style="margin-top: 28px; border-top: 1px solid #E8E2E4; padding-top: 16px;">
+            <strong>Sistema SICARA</strong><br>
+            <span style="font-size: 13px; color: #685D68;">Sistema de Control de Asistencia y Rendimiento Académico en Escuelas Rurales.</span>
+          </p>
+        </div>
+        <div class="footer">
+          Este es un correo oficial generado automáticamente por la plataforma SICARA.
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    const fromAddress = process.env.SMTP_FROM || (process.env.SMTP_USER ? `"SICARA Administración" <${process.env.SMTP_USER}>` : undefined);
+
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: cleanDest,
+      subject: asunto,
+      text: cuerpoTexto,
+      html: cuerpoHtml,
+    });
+
+    console.log(`[RECUPERACIÓN CORREO] Correo de restablecimiento enviado a: ${cleanDest}. MessageID: ${info.messageId}`);
+    return { sent: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[RECUPERACIÓN CORREO] Error al despachar correo:', err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 module.exports = {
   crearTransporteSMTP,
   verificarConexionSMTP,
   generarComprobantePDF,
   notificarEscuelaPorCorreo,
+  enviarCorreoRecuperacion,
 };

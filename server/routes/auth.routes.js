@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../config/db');
 const { JWT_SECRET } = require('../middleware/auth');
-const { notificarEscuelaPorCorreo } = require('../utils/email');
+const { notificarEscuelaPorCorreo, enviarCorreoRecuperacion } = require('../utils/email');
 
 const router = express.Router();
 
@@ -549,6 +549,226 @@ router.post('/activacion/solicitar-nuevo', async (req, res) => {
   } catch (error) {
     console.error('Error al generar nuevo enlace de activación:', error);
     return res.status(500).json({ success: false, message: 'Error interno al procesar la solicitud.' });
+  }
+});
+
+// POST /api/auth/recuperar/solicitar - Solicitar restablecimiento de contraseña
+router.post('/recuperar/solicitar', async (req, res) => {
+  try {
+    const { correo } = req.body;
+    if (!correo || !correo.trim()) {
+      return res.status(400).json({ success: false, message: 'Por favor ingrese su correo electrónico.' });
+    }
+
+    const cleanEmail = correo.trim().toLowerCase();
+    const userRes = await db.query(
+      `SELECT u.id_usuario, u.nombre, u.apellidos, u.correo, u.rol, u.estado, e.nombre_escuela
+       FROM usuario u
+       LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+       WHERE LOWER(u.correo) = $1`,
+      [cleanEmail]
+    );
+
+    if (userRes.rows.length === 0) {
+      // Mensaje neutro por seguridad para no revelar si el correo existe
+      return res.json({
+        success: true,
+        message: 'Si el correo electrónico proporcionado se encuentra registrado en SICARA, recibirá un enlace para restablecer su contraseña en los próximos minutos.',
+      });
+    }
+
+    const user = userRes.rows[0];
+
+    // Generar token criptográfico seguro de 32 bytes con vigencia de 2 horas
+    const tokenRecuperacion = crypto.randomBytes(32).toString('hex');
+    const expira = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 horas
+
+    await db.query(
+      `UPDATE usuario
+       SET token_recuperacion = $1, token_recuperacion_expira = $2
+       WHERE id_usuario = $3`,
+      [tokenRecuperacion, expira, user.id_usuario]
+    );
+
+    // Enviar correo de recuperación
+    const emailRes = await enviarCorreoRecuperacion({
+      destinatario: user.correo,
+      nombreUsuario: `${user.nombre} ${user.apellidos || ''}`.trim(),
+      token: tokenRecuperacion,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Se ha enviado un enlace seguro para restablecer su contraseña a su correo electrónico.',
+      emailSent: emailRes.sent,
+    });
+  } catch (error) {
+    console.error('Error en /api/auth/recuperar/solicitar:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al procesar la solicitud de recuperación.' });
+  }
+});
+
+// GET /api/auth/recuperar/verificar/:token - Comprobar validez del token de restablecimiento
+router.get('/recuperar/verificar/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token || !token.trim()) {
+      return res.status(400).json({ success: false, message: 'Token de restablecimiento no proporcionado.' });
+    }
+
+    const query = `
+      SELECT u.id_usuario, u.nombre, u.apellidos, u.correo, u.rol, u.token_recuperacion_expira,
+             e.nombre_escuela, e.cct
+      FROM usuario u
+      LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+      WHERE u.token_recuperacion = $1
+    `;
+    const result = await db.query(query, [token.trim()]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'TOKEN_INVALIDO',
+        message: 'El enlace de restablecimiento no es válido o ya fue utilizado anteriormente.',
+      });
+    }
+
+    const row = result.rows[0];
+
+    if (row.token_recuperacion_expira && new Date() > new Date(row.token_recuperacion_expira)) {
+      return res.status(410).json({
+        success: false,
+        code: 'TOKEN_EXPIRADO',
+        message: 'El enlace de restablecimiento ha expirado. Por seguridad, solicite un nuevo enlace.',
+        correo: row.correo,
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        nombre: row.nombre,
+        correo: row.correo,
+        rol: row.rol,
+        nombre_escuela: row.nombre_escuela,
+        cct: row.cct,
+      },
+    });
+  } catch (error) {
+    console.error('Error al verificar token de recuperación:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al validar el enlace.' });
+  }
+});
+
+// POST /api/auth/recuperar/completar - Guardar nueva contraseña cifrada e invalidar token
+router.post('/recuperar/completar', async (req, res) => {
+  try {
+    const { token, contrasena, confirmarContrasena } = req.body;
+
+    if (!token || !token.trim()) {
+      return res.status(400).json({ success: false, message: 'Token de restablecimiento no proporcionado.' });
+    }
+
+    if (!contrasena || !confirmarContrasena) {
+      return res.status(400).json({ success: false, message: 'Debe ingresar y confirmar su nueva contraseña.' });
+    }
+
+    if (contrasena !== confirmarContrasena) {
+      return res.status(400).json({ success: false, message: 'Las contraseñas no coinciden.' });
+    }
+
+    // Mismos requisitos estrictos de seguridad de SICARA
+    const regexSeguridad = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z\d\s]).{8,72}$/;
+    if (!regexSeguridad.test(contrasena)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La contraseña no cumple con los requisitos: mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un carácter especial.',
+      });
+    }
+
+    const query = `
+      SELECT u.id_usuario, u.nombre, u.apellidos, u.correo, u.rol, u.estado, u.token_recuperacion_expira,
+             u.id_escuela, e.nombre_escuela, e.cct, e.color_primario, e.color_secundario, e.color_complementario, e.tipo_logo
+      FROM usuario u
+      LEFT JOIN escuelas e ON u.id_escuela = e.id_escuela
+      WHERE u.token_recuperacion = $1
+    `;
+    const result = await db.query(query, [token.trim()]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'TOKEN_INVALIDO',
+        message: 'El enlace de restablecimiento es inválido o ya ha sido utilizado.',
+      });
+    }
+
+    const user = result.rows[0];
+
+    if (user.token_recuperacion_expira && new Date() > new Date(user.token_recuperacion_expira)) {
+      return res.status(410).json({
+        success: false,
+        code: 'TOKEN_EXPIRADO',
+        message: 'El enlace de restablecimiento ha expirado. Solicite un nuevo enlace.',
+      });
+    }
+
+    // Hashear con bcrypt
+    const salt = await bcrypt.genSalt(10);
+    const passHash = await bcrypt.hash(contrasena, salt);
+
+    // Invalidar token de recuperación y actualizar contraseña
+    await db.query(
+      `UPDATE usuario
+       SET contrasena = $1,
+           token_recuperacion = NULL,
+           token_recuperacion_expira = NULL,
+           cuenta_activada = TRUE,
+           estado = 'Activo'
+       WHERE id_usuario = $2`,
+      [passHash, user.id_usuario]
+    );
+
+    // Iniciar sesión automáticamente
+    const tokenPayload = {
+      id_usuario: user.id_usuario,
+      id_escuela: user.id_escuela || null,
+      correo: user.correo,
+      rol: user.rol,
+      es_principal: Boolean(user.es_principal),
+      nombre: user.nombre,
+      apellidos: user.apellidos,
+    };
+
+    const sessionToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '12h' });
+
+    return res.json({
+      success: true,
+      message: '¡Tu contraseña ha sido restablecida exitosamente! Sesión iniciada.',
+      token: sessionToken,
+      user: {
+        id_usuario: user.id_usuario,
+        id_escuela: user.id_escuela,
+        nombre: user.nombre,
+        apellidos: user.apellidos,
+        correo: user.correo,
+        rol: user.rol,
+        estado: 'Activo',
+        es_principal: Boolean(user.es_principal),
+        escuela: user.id_escuela ? {
+          id_escuela: user.id_escuela,
+          nombre_escuela: user.nombre_escuela,
+          cct: user.cct,
+          color_primario: user.color_primario || '#722F37',
+          color_secundario: user.color_secundario || '#4A1722',
+          color_complementario: user.color_complementario || '#A64D5A',
+          tiene_logo: Boolean(user.tipo_logo),
+        } : null,
+      },
+    });
+  } catch (error) {
+    console.error('Error al completar restablecimiento de contraseña:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al restablecer la contraseña.' });
   }
 });
 

@@ -11,23 +11,24 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-export default function LoginView() {
+export default function LoginView({ initialEmail = '', onGoToRecuperar }) {
   const { login } = useAuth();
   const { showToast } = useToast();
 
-  // Los campos aparecen completamente vacíos sin autocompletado ni almacenamiento
-  const [correo, setCorreo] = useState('');
+  const [correo, setCorreo] = useState(initialEmail || '');
   const [contrasena, setContrasena] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Limpiar campos explícitamente al montar el componente
+  // Sincronizar o inicializar con initialEmail
   useEffect(() => {
-    setCorreo('');
+    if (initialEmail) {
+      setCorreo(initialEmail);
+    }
     setContrasena('');
     setErrorMessage('');
-  }, []);
+  }, [initialEmail]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -81,7 +82,7 @@ export default function LoginView() {
             Control de Asistencia y Rendimiento Académico
           </p>
           <p className="text-xs text-app-muted mt-0.5">
-            Módulo Exclusivo del Administrador General
+            Plataforma Institucional para Escuelas Rurales
           </p>
         </div>
 
@@ -90,7 +91,7 @@ export default function LoginView() {
           <div className="mb-6">
             <h2 className="text-xl font-bold text-app-text">Iniciar Sesión</h2>
             <p className="text-xs text-app-muted mt-1">
-              Ingrese sus credenciales autorizadas de Administrador General
+              Ingrese con sus credenciales de Directivo o Administrador
             </p>
           </div>
 
@@ -153,6 +154,17 @@ export default function LoginView() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {onGoToRecuperar && (
+                <div className="flex justify-end mt-1.5">
+                  <button
+                    type="button"
+                    onClick={onGoToRecuperar}
+                    className="text-[11px] font-semibold text-vino-primary hover:text-vino-dark hover:underline transition-colors cursor-pointer"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Botón Iniciar Sesión */}

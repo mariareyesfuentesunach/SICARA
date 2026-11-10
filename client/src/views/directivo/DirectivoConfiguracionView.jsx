@@ -27,6 +27,7 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
   const [logoPreview, setLogoPreview] = useState(null);
   const [logoBase64, setLogoBase64] = useState(null);
   const [tipoLogo, setTipoLogo] = useState('image/png');
+  const [eliminarLogo, setEliminarLogo] = useState(false);
 
   // Datos fijos institucionales
   const [infoFija, setInfoFija] = useState(null);
@@ -44,7 +45,9 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
         setInfoFija(e);
 
         if (e.tiene_logo) {
-          setLogoPreview(`/api/directivo/logo?t=${Date.now()}`);
+          setLogoPreview(`/api/directivo/logo?escuela=${e.id_escuela}&t=${Date.now()}`);
+        } else {
+          setLogoPreview(null);
         }
       }
     } catch (err) {
@@ -74,6 +77,7 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
     }
 
     setTipoLogo(file.type);
+    setEliminarLogo(false);
     const reader = new FileReader();
     reader.onload = () => {
       setLogoBase64(reader.result);
@@ -98,7 +102,9 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
         color_complementario: colorComplementario,
       };
 
-      if (logoBase64) {
+      if (eliminarLogo) {
+        payload.eliminar_logo = true;
+      } else if (logoBase64) {
         payload.logoBase64 = logoBase64;
         payload.tipo_logo = tipoLogo;
       }
@@ -106,6 +112,13 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
       const res = await api.updateDirectivoConfiguracion(payload);
       if (res.success) {
         showToast('Identidad institucional actualizada exitosamente.', 'success');
+        setLogoBase64(null);
+        setEliminarLogo(false);
+        if (res.escuela?.tiene_logo) {
+          setLogoPreview(`/api/directivo/logo?escuela=${res.escuela.id_escuela}&t=${Date.now()}`);
+        } else {
+          setLogoPreview(null);
+        }
         if (onEscuelaUpdated) {
           onEscuelaUpdated(res.escuela);
         }
@@ -179,6 +192,9 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
                     src={logoPreview}
                     alt="Logo Escuela"
                     className="w-full h-full object-contain"
+                    onError={() => {
+                      setLogoPreview(null);
+                    }}
                   />
                 ) : (
                   <div className="text-center text-app-muted">
@@ -188,17 +204,35 @@ export default function DirectivoConfiguracionView({ escuela, onEscuelaUpdated }
                 )}
               </div>
 
-              <label className="mt-2 block text-center">
-                <span className="px-3 py-1 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-bold text-[11px] cursor-pointer transition-colors shadow-xs">
-                  Examinar...
-                </span>
-                <input
-                  type="file"
-                  accept="image/png, image/jpeg, image/svg+xml"
-                  onChange={handleLogoFileChange}
-                  className="hidden"
-                />
-              </label>
+              <div className="mt-2 text-center space-y-1">
+                <label className="inline-block">
+                  <span className="px-3 py-1 rounded-subtle bg-gray-100 hover:bg-gray-200 text-app-text font-bold text-[11px] cursor-pointer transition-colors shadow-xs">
+                    {logoPreview ? 'Cambiar logo...' : 'Examinar...'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/svg+xml"
+                    onChange={handleLogoFileChange}
+                    className="hidden"
+                  />
+                </label>
+
+                {logoPreview && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLogoPreview(null);
+                        setLogoBase64(null);
+                        setEliminarLogo(true);
+                      }}
+                      className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline cursor-pointer"
+                    >
+                      Quitar logo
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Nombre y CCT */}

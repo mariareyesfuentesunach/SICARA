@@ -39,11 +39,12 @@ function authMiddleware(req, res, next) {
 function directivoMiddleware(req, res, next) {
   try {
     const authHeader = req.headers['authorization'];
-    if (!authHeader) {
+    const queryToken = req.query.token;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (authHeader || queryToken);
+
+    if (!token) {
       return res.status(401).json({ success: false, message: 'Acceso no autorizado: Token no proporcionado.' });
     }
-
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
 
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
       if (err) {
