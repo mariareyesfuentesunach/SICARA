@@ -546,10 +546,24 @@ router.get('/docentes', async (req, res) => {
       SELECT d.id_docente, d.id_usuario, d.id_escuela, d.curp, d.especialidad, d.telefono, d.estado,
              u.nombre, u.apellidos, u.correo, u.fecha_registro,
              COUNT(DISTINCT gd.id_grupo)::int AS total_grupos,
-             COUNT(DISTINCT gd.id_materia)::int AS total_materias
+             COUNT(DISTINCT gd.id_materia)::int AS total_materias,
+             COALESCE(
+               JSON_AGG(
+                 DISTINCT jsonb_build_object(
+                   'id_materia', m.id_materia,
+                   'nombre_materia', m.nombre_materia,
+                   'id_grupo', g.id_grupo,
+                   'nombre_grupo', g.nombre_grupo,
+                   'grado', g.grado
+                 )
+               ) FILTER (WHERE m.id_materia IS NOT NULL),
+               '[]'::json
+             ) AS materias_impartidas
       FROM docentes d
       JOIN usuario u ON d.id_usuario = u.id_usuario
       LEFT JOIN grupo_docente gd ON d.id_docente = gd.id_docente
+      LEFT JOIN materia m ON gd.id_materia = m.id_materia
+      LEFT JOIN grupo g ON gd.id_grupo = g.id_grupo
       WHERE d.id_escuela = $1
     `;
     const params = [id_escuela];
@@ -914,9 +928,10 @@ router.get('/grupos', async (req, res) => {
       query += ` AND LOWER(g.nombre_grupo) LIKE $${params.length}`;
     }
 
-    if (grado) {
-      params.push(grado);
-      query += ` AND g.grado = $${params.length}`;
+    if (grado && grado !== 'todos') {
+      const cleanGrado = grado.toString().trim().replace(/º|°/g, '');
+      params.push(`%${cleanGrado}%`);
+      query += ` AND (g.grado = $${params.length} OR REPLACE(REPLACE(g.grado, 'º', ''), '°', '') LIKE $${params.length})`;
     }
 
     if (ciclo_escolar) {
@@ -1187,15 +1202,29 @@ router.delete('/grupos/:id/alumnos/:id_alumno', async (req, res) => {
 router.get('/materias', async (req, res) => {
   try {
     const id_escuela = req.user.id_escuela;
-    const { q, estado } = req.query;
+    const { q, estado, id_grupo, grado } = req.query;
 
     let query = `
       SELECT m.id_materia, m.nombre_materia, m.descripcion, m.estado, m.id_escuela,
              COUNT(DISTINCT gd.id_grupo)::int AS total_grupos_asignados,
-             COUNT(DISTINCT gd.id_docente)::int AS total_docentes_asignados
+             COUNT(DISTINCT gd.id_docente)::int AS total_docentes_asignados,
+             COALESCE(
+               JSON_AGG(
+                 DISTINCT jsonb_build_object(
+                   'id_grupo', g.id_grupo,
+                   'nombre_grupo', g.nombre_grupo,
+                   'grado', g.grado,
+                   'id_docente', d.id_docente,
+                   'docente_nombre', TRIM(CONCAT(u.nombre, ' ', COALESCE(u.apellidos, '')))
+                 )
+               ) FILTER (WHERE g.id_grupo IS NOT NULL),
+               '[]'::json
+             ) AS grupos_asignados
       FROM materia m
       LEFT JOIN grupo_docente gd ON m.id_materia = gd.id_materia
       LEFT JOIN grupo g ON gd.id_grupo = g.id_grupo AND g.id_escuela = $1
+      LEFT JOIN docentes d ON gd.id_docente = d.id_docente
+      LEFT JOIN usuario u ON d.id_usuario = u.id_usuario
       WHERE (m.id_escuela = $1 OR m.id_escuela IS NULL)
     `;
     const params = [id_escuela];
@@ -1208,6 +1237,17 @@ router.get('/materias', async (req, res) => {
     if (estado && estado !== 'todos') {
       params.push(estado);
       query += ` AND m.estado = $${params.length}`;
+    }
+
+    if (id_grupo) {
+      params.push(id_grupo);
+      query += ` AND gd.id_grupo = $${params.length}`;
+    }
+
+    if (grado) {
+      const cleanGrado = grado.toString().trim().replace(/º|°/g, '');
+      params.push(`%${cleanGrado}%`);
+      query += ` AND (g.grado = $${params.length} OR REPLACE(REPLACE(g.grado, 'º', ''), '°', '') LIKE $${params.length})`;
     }
 
     query += ` GROUP BY m.id_materia ORDER BY m.nombre_materia ASC`;

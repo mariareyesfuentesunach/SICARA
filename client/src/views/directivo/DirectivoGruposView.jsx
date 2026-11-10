@@ -51,12 +51,12 @@ export default function DirectivoGruposView({ escuela }) {
 
   const primaryColor = escuela?.color_primario || '#722F37';
 
-  const fetchGrupos = async () => {
+  const fetchGrupos = async (searchTerm = search, gradoTerm = filterGrado) => {
     setLoading(true);
     try {
       const res = await api.getDirectivoGrupos({
-        q: search,
-        grado: filterGrado,
+        q: searchTerm,
+        grado: gradoTerm,
       });
       if (res.success) {
         setGrupos(res.grupos || []);
@@ -70,8 +70,11 @@ export default function DirectivoGruposView({ escuela }) {
   };
 
   useEffect(() => {
-    fetchGrupos();
-  }, [filterGrado]);
+    const timer = setTimeout(() => {
+      fetchGrupos(search, filterGrado);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, filterGrado]);
 
   const handleOpenCreate = () => {
     setEditingGrupo(null);

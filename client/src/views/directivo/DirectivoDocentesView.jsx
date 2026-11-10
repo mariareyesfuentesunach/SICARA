@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import Modal from '../../components/Modal';
@@ -19,6 +19,10 @@ import {
   Send,
   ShieldCheck,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ListFilter,
+  Grid,
 } from 'lucide-react';
 
 export default function DirectivoDocentesView({ escuela }) {
@@ -27,6 +31,11 @@ export default function DirectivoDocentesView({ escuela }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterEstado, setFilterEstado] = useState('todos');
+
+  // Modo de visualización: agrupado por materia ('materia') o nómina general ('general')
+  const [viewMode, setViewMode] = useState('materia'); // 'materia' | 'general'
+  const [selectedMateriaFilter, setSelectedMateriaFilter] = useState('todas');
+  const [collapsedMaterias, setCollapsedMaterias] = useState({});
 
   // Modal Crear / Editar
   const [showModal, setShowModal] = useState(false);
@@ -73,8 +82,11 @@ export default function DirectivoDocentesView({ escuela }) {
   };
 
   useEffect(() => {
-    fetchDocentes();
-  }, [filterEstado]);
+    const timer = setTimeout(() => {
+      fetchDocentes();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, filterEstado]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -111,27 +123,13 @@ export default function DirectivoDocentesView({ escuela }) {
     setShowModal(true);
   };
 
-  const handleReenviarCorreo = async (doc) => {
-    setResendingEmailId(doc.id_docente);
-    try {
-      const res = await api.reenviarCorreoDocente(doc.id_docente);
-      if (res.success) {
-        showToast(res.message, 'success');
-      }
-    } catch (err) {
-      showToast(err.message || 'Error al reenviar correo al docente.', 'error');
-    } finally {
-      setResendingEmailId(null);
-    }
-  };
-
   const handleSubmitForm = async (e) => {
     e.preventDefault();
     if (!formData.nombre.trim()) {
-      showToast('El nombre es obligatorio.', 'warning');
+      showToast('El nombre del docente es obligatorio.', 'warning');
       return;
     }
-    if (!editingDocente && !formData.correo.trim()) {
+    if (!formData.correo.trim()) {
       showToast('El correo electrónico es obligatorio.', 'warning');
       return;
     }
@@ -141,14 +139,14 @@ export default function DirectivoDocentesView({ escuela }) {
       if (editingDocente) {
         const res = await api.updateDirectivoDocente(editingDocente.id_docente, formData);
         if (res.success) {
-          showToast('Docente actualizado exitosamente.', 'success');
+          showToast('Docente actualizado con éxito.', 'success');
           setShowModal(false);
           fetchDocentes();
         }
       } else {
         const res = await api.createDirectivoDocente(formData);
         if (res.success) {
-          showToast(res.message || 'Docente registrado exitosamente. Se envió el correo de alta.', 'success');
+          showToast('Docente registrado y correo de activación enviado.', 'success');
           setShowModal(false);
           fetchDocentes();
         }
@@ -157,6 +155,20 @@ export default function DirectivoDocentesView({ escuela }) {
       showToast(err.message || 'Error al guardar docente.', 'error');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleReenviarCorreo = async (doc) => {
+    setResendingEmailId(doc.id_docente);
+    try {
+      const res = await api.reenviarCorreoDocente(doc.id_docente);
+      if (res.success) {
+        showToast(res.message || 'Correo de alta reenviado correctamente.', 'success');
+      }
+    } catch (err) {
+      showToast(err.message || 'Error al reenviar correo al docente.', 'error');
+    } finally {
+      setResendingEmailId(null);
     }
   };
 
@@ -170,10 +182,90 @@ export default function DirectivoDocentesView({ escuela }) {
         setAsignaciones(res.asignaciones || []);
       }
     } catch (err) {
-      showToast('Error al consultar asignaciones del docente.', 'error');
+      showToast('Error al consultar asignaciones.', 'error');
     } finally {
       setLoadingAsig(false);
     }
+  };
+
+  // Extraer lista única de materias impartidas por los docentes
+  const catalogoMateriasImpartidas = useMemo(() => {
+    const setMats = new Set();
+    docentes.forEach((d) => {
+      const mats = d.materias_impartidas || [];
+      mats.forEach((m) => {
+        if (m.nombre_materia) setMats.add(m.nombre_materia.trim());
+      });
+    });
+    return Array.from(setMats).sort();
+  }, [docentes]);
+
+  // Agrupamiento de docentes por materias impartidas
+  const docentesPorMateria = useMemo(() => {
+    const mapa = {};
+
+    docentes.forEach((d) => {
+      const mats = d.materias_impartidas || [];
+      if (mats.length === 0) {
+        if (!mapa['Sin asignación de materia']) {
+          mapa['Sin asignación de materia'] = [];
+        }
+        mapa['Sin asignación de materia'].push({ docente: d, gruposTxt: 'Sin grupos asignados' });
+      } else {
+        mats.forEach((m) => {
+          const matNombre = m.nombre_materia ? m.nombre_materia.trim() : 'Materia no especificada';
+          if (!mapa[matNombre]) {
+            mapa[matNombre] = [];
+          }
+          const grupoInfo = m.nombre_grupo ? `${m.nombre_grupo} (${m.grado}°)` : '';
+          mapa[matNombre].push({ docente: d, grupoInfo });
+        });
+      }
+    });
+
+    // Unificar docentes por materia (evitar duplicar un docente dentro de la misma materia si tiene varios grupos)
+    const resultado = [];
+    Object.keys(mapa)
+      .sort((a, b) => {
+        if (a === 'Sin asignación de materia') return 1;
+        if (b === 'Sin asignación de materia') return -1;
+        return a.localeCompare(b);
+      })
+      .forEach((matKey) => {
+        if (selectedMateriaFilter !== 'todas' && matKey !== selectedMateriaFilter) {
+          return;
+        }
+
+        const rawList = mapa[matKey];
+        const docMap = new Map();
+        rawList.forEach(({ docente, grupoInfo }) => {
+          if (!docMap.has(docente.id_docente)) {
+            docMap.set(docente.id_docente, {
+              ...docente,
+              gruposDeEstaMateria: grupoInfo ? [grupoInfo] : [],
+            });
+          } else if (grupoInfo) {
+            const item = docMap.get(docente.id_docente);
+            if (!item.gruposDeEstaMateria.includes(grupoInfo)) {
+              item.gruposDeEstaMateria.push(grupoInfo);
+            }
+          }
+        });
+
+        resultado.push({
+          materia: matKey,
+          docentes: Array.from(docMap.values()),
+        });
+      });
+
+    return resultado;
+  }, [docentes, selectedMateriaFilter]);
+
+  const toggleCollapseMateria = (materia) => {
+    setCollapsedMaterias((prev) => ({
+      ...prev,
+      [materia]: !prev[materia],
+    }));
   };
 
   return (
@@ -183,21 +275,51 @@ export default function DirectivoDocentesView({ escuela }) {
         <div>
           <h2 className="text-lg font-bold text-app-text flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-vino-primary" />
-            Administración de Docentes
+            Nómina del Personal Docente
           </h2>
           <p className="text-xs text-app-muted">
-            Gestión del personal docente, credenciales institucionales y carga académica
+            Directorio docente agrupado por materias curriculares impartidas y gestión institucional
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          style={{ backgroundColor: primaryColor }}
-          className="px-4 py-2 rounded-subtle text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer hover:opacity-90 transition-all"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Registrar Docente</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Conmutador de vista */}
+          <div className="inline-flex rounded-subtle border border-app-border bg-gray-50 p-0.5">
+            <button
+              onClick={() => setViewMode('materia')}
+              className={`px-3 py-1.5 rounded-subtle text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'materia'
+                  ? 'bg-white text-vino-primary shadow-xs'
+                  : 'text-app-muted hover:text-app-text'
+              }`}
+              title="Vista agrupada por materias"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Por Materias</span>
+            </button>
+            <button
+              onClick={() => setViewMode('general')}
+              className={`px-3 py-1.5 rounded-subtle text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'general'
+                  ? 'bg-white text-vino-primary shadow-xs'
+                  : 'text-app-muted hover:text-app-text'
+              }`}
+              title="Vista en lista general"
+            >
+              <ListFilter className="w-3.5 h-3.5" />
+              <span>Lista General</span>
+            </button>
+          </div>
+
+          <button
+            onClick={handleOpenCreate}
+            style={{ backgroundColor: primaryColor }}
+            className="px-4 py-2 rounded-subtle text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer hover:opacity-90 transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Registrar Docente</span>
+          </button>
+        </div>
       </div>
 
       {/* Buscador y filtros */}
@@ -212,6 +334,22 @@ export default function DirectivoDocentesView({ escuela }) {
             className="w-full pl-9 pr-3 py-2 text-xs rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary"
           />
         </form>
+
+        {viewMode === 'materia' && (
+          <select
+            value={selectedMateriaFilter}
+            onChange={(e) => setSelectedMateriaFilter(e.target.value)}
+            className="px-3 py-2 text-xs rounded-subtle border border-app-border focus:outline-none focus:border-vino-primary bg-white text-app-text font-medium"
+          >
+            <option value="todas">Todas las materias</option>
+            {catalogoMateriasImpartidas.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="Sin asignación de materia">Sin asignación de materia</option>
+          </select>
+        )}
 
         <select
           value={filterEstado}
@@ -233,99 +371,251 @@ export default function DirectivoDocentesView({ escuela }) {
         </button>
       </div>
 
-      {/* Tabla de Docentes */}
-      <div className="bg-white rounded-card border border-app-border shadow-soft overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-app-border bg-gray-50/75 text-app-muted font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">Docente</th>
-                <th className="py-3 px-4">CURP / Especialidad</th>
-                <th className="py-3 px-4">Contacto</th>
-                <th className="py-3 px-4">Carga Académica</th>
-                <th className="py-3 px-4">Estado</th>
-                <th className="py-3 px-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-app-border/60">
-              {loading ? (
-                <tr>
-                  <td colSpan="6" className="py-12 text-center text-app-muted">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-vino-primary" />
-                    Cargando nómina docente...
-                  </td>
-                </tr>
-              ) : docentes.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="py-8 text-center text-app-muted">
-                    No hay docentes registrados en la institución.
-                  </td>
-                </tr>
-              ) : (
-                docentes.map((doc) => (
-                  <tr key={doc.id_docente} className="hover:bg-gray-50/70 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-app-text">
-                        {doc.nombre} {doc.apellidos}
-                      </div>
-                      <div className="text-[11px] font-mono text-app-muted">{doc.correo}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-mono text-[11px] text-app-text">
-                        {doc.curp || <span className="text-app-muted italic">S/C</span>}
-                      </div>
-                      <div className="text-[10px] text-app-muted">
-                        {doc.especialidad || 'Educación Básica'}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-app-muted">
-                      {doc.telefono ? (
-                        <span className="flex items-center gap-1 font-mono text-[11px]">
-                          <Phone className="w-3 h-3" />
-                          {doc.telefono}
-                        </span>
+      {/* VISTA 1: DOCENTES AGRUPADOS POR MATERIAS */}
+      {viewMode === 'materia' && (
+        <div className="space-y-4">
+          {loading ? (
+            <div className="bg-white rounded-card p-12 text-center text-app-muted border border-app-border shadow-soft">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-vino-primary" />
+              Cargando docentes por asignaturas...
+            </div>
+          ) : docentesPorMateria.length === 0 ? (
+            <div className="bg-white rounded-card p-12 text-center text-app-muted border border-app-border shadow-soft">
+              No se encontraron docentes para los filtros especificados.
+            </div>
+          ) : (
+            docentesPorMateria.map((seccion) => {
+              const isCollapsed = !!collapsedMaterias[seccion.materia];
+              return (
+                <div
+                  key={seccion.materia}
+                  className="bg-white rounded-card border border-app-border shadow-soft overflow-hidden"
+                >
+                  {/* Cabecera de la Materia */}
+                  <div
+                    onClick={() => toggleCollapseMateria(seccion.materia)}
+                    className="p-4 bg-gray-50/90 hover:bg-gray-100/70 cursor-pointer flex items-center justify-between border-b border-app-border select-none"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-app-muted" />
                       ) : (
-                        'Sin teléfono'
+                        <ChevronDown className="w-4 h-4 text-app-muted" />
                       )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => handleViewAsignaciones(doc)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-card bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-semibold cursor-pointer transition-colors"
-                      >
-                        <Layers className="w-3 h-3" />
-                        <span>{doc.total_grupos} grupos • {doc.total_materias} materias</span>
-                      </button>
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge status={doc.estado || 'Activo'} />
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleReenviarCorreo(doc)}
-                          disabled={resendingEmailId === doc.id_docente}
-                          className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
-                          title="Reenviar correo de alta e instrucciones de CURP al docente"
-                        >
-                          <Send className={`w-4 h-4 ${resendingEmailId === doc.id_docente ? 'animate-spin' : ''}`} />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(doc)}
-                          className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
-                          title="Editar docente"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                      <span className="w-7 h-7 rounded-full bg-purple-50 text-purple-700 font-bold text-xs flex items-center justify-center">
+                        <BookOpen className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h3 className="font-bold text-sm text-app-text">{seccion.materia}</h3>
+                        <p className="text-[11px] text-app-muted">
+                          {seccion.docentes.length} docente(s) asignado(s) a esta materia
+                        </p>
                       </div>
+                    </div>
+
+                    <span className="text-[11px] font-bold text-app-muted bg-white px-2.5 py-1 rounded-full border border-app-border">
+                      {seccion.docentes.length} maestro(s)
+                    </span>
+                  </div>
+
+                  {/* Tabla de Docentes de la materia */}
+                  {!isCollapsed && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-app-border bg-white text-app-muted font-bold uppercase tracking-wider text-[11px]">
+                            <th className="py-2.5 px-4">Docente</th>
+                            <th className="py-2.5 px-4">CURP / Especialidad</th>
+                            <th className="py-2.5 px-4">Contacto</th>
+                            <th className="py-2.5 px-4">Grupos en esta materia</th>
+                            <th className="py-2.5 px-4">Estado</th>
+                            <th className="py-2.5 px-4 text-right">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-app-border/60">
+                          {seccion.docentes.map((doc) => (
+                            <tr key={`${seccion.materia}-${doc.id_docente}`} className="hover:bg-gray-50/70 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="font-bold text-app-text">
+                                  {doc.nombre} {doc.apellidos}
+                                </div>
+                                <div className="text-[11px] font-mono text-app-muted">{doc.correo}</div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="font-mono text-[11px] text-app-text">
+                                  {doc.curp || <span className="text-app-muted italic">S/C</span>}
+                                </div>
+                                <div className="text-[10px] text-app-muted">
+                                  {doc.especialidad || 'Educación Básica'}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 text-app-muted">
+                                {doc.telefono ? (
+                                  <span className="flex items-center gap-1 font-mono text-[11px]">
+                                    <Phone className="w-3 h-3" />
+                                    {doc.telefono}
+                                  </span>
+                                ) : (
+                                  'Sin teléfono'
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4">
+                                {doc.gruposDeEstaMateria && doc.gruposDeEstaMateria.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 max-w-xs">
+                                    {doc.gruposDeEstaMateria.map((grpTxt, gIdx) => (
+                                      <span
+                                        key={gIdx}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-800 border border-blue-200"
+                                      >
+                                        <Layers className="w-2.5 h-2.5 text-blue-600" />
+                                        {grpTxt}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleViewAsignaciones(doc)}
+                                    className="text-[11px] text-purple-700 hover:underline font-semibold"
+                                  >
+                                    Ver carga completa ({doc.total_grupos} grupos)
+                                  </button>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <Badge status={doc.estado || 'Activo'} />
+                              </td>
+
+                              <td className="py-3 px-4 text-right">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleReenviarCorreo(doc)}
+                                    disabled={resendingEmailId === doc.id_docente}
+                                    className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
+                                    title="Reenviar correo de alta al docente"
+                                  >
+                                    <Send className={`w-4 h-4 ${resendingEmailId === doc.id_docente ? 'animate-spin' : ''}`} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenEdit(doc)}
+                                    className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
+                                    title="Editar docente"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* VISTA 2: NÓMINA GENERAL EN TABLA */}
+      {viewMode === 'general' && (
+        <div className="bg-white rounded-card border border-app-border shadow-soft overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-app-border bg-gray-50/75 text-app-muted font-bold uppercase tracking-wider">
+                  <th className="py-3 px-4">Docente</th>
+                  <th className="py-3 px-4">CURP / Especialidad</th>
+                  <th className="py-3 px-4">Contacto</th>
+                  <th className="py-3 px-4">Carga Académica</th>
+                  <th className="py-3 px-4">Estado</th>
+                  <th className="py-3 px-4 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-app-border/60">
+                {loading ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-app-muted">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-vino-primary" />
+                      Cargando nómina docente...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : docentes.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-8 text-center text-app-muted">
+                      No hay docentes registrados en la institución.
+                    </td>
+                  </tr>
+                ) : (
+                  docentes.map((doc) => (
+                    <tr key={doc.id_docente} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-app-text">
+                          {doc.nombre} {doc.apellidos}
+                        </div>
+                        <div className="text-[11px] font-mono text-app-muted">{doc.correo}</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-mono text-[11px] text-app-text">
+                          {doc.curp || <span className="text-app-muted italic">S/C</span>}
+                        </div>
+                        <div className="text-[10px] text-app-muted">
+                          {doc.especialidad || 'Educación Básica'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-app-muted">
+                        {doc.telefono ? (
+                          <span className="flex items-center gap-1 font-mono text-[11px]">
+                            <Phone className="w-3 h-3" />
+                            {doc.telefono}
+                          </span>
+                        ) : (
+                          'Sin teléfono'
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          onClick={() => handleViewAsignaciones(doc)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-card bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-semibold cursor-pointer transition-colors"
+                        >
+                          <Layers className="w-3 h-3" />
+                          <span>{doc.total_grupos} grupos • {doc.total_materias} materias</span>
+                        </button>
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge status={doc.estado || 'Activo'} />
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleReenviarCorreo(doc)}
+                            disabled={resendingEmailId === doc.id_docente}
+                            className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
+                            title="Reenviar correo de alta al docente"
+                          >
+                            <Send className={`w-4 h-4 ${resendingEmailId === doc.id_docente ? 'animate-spin' : ''}`} />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(doc)}
+                            className="p-1.5 rounded-subtle hover:bg-gray-100 text-app-muted hover:text-vino-primary transition-colors cursor-pointer"
+                            title="Editar docente"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* MODAL: Registrar / Editar Docente */}
       <Modal
@@ -587,4 +877,3 @@ export default function DirectivoDocentesView({ escuela }) {
     </div>
   );
 }
-
