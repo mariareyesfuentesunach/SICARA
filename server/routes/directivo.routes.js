@@ -932,10 +932,13 @@ router.get('/grupos', async (req, res) => {
       query += ` AND LOWER(g.nombre_grupo) LIKE $${params.length}`;
     }
 
-    if (grado && grado !== 'todos') {
+    if (grado && grado !== 'todos' && grado.toString().trim() !== '') {
       const cleanGrado = grado.toString().trim().replace(/º|°/g, '');
+      params.push(cleanGrado);
       params.push(`%${cleanGrado}%`);
-      query += ` AND (g.grado = $${params.length} OR REPLACE(REPLACE(g.grado, 'º', ''), '°', '') LIKE $${params.length})`;
+      const p1 = params.length - 1;
+      const p2 = params.length;
+      query += ` AND (g.grado = $${p1} OR REPLACE(REPLACE(g.grado, 'º', ''), '°', '') LIKE $${p2})`;
     }
 
     if (ciclo_escolar) {

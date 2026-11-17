@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 import DocenteSidebar from '../../components/docente/DocenteSidebar';
 import DocenteNavbar from '../../components/docente/DocenteNavbar';
 import ConfirmModal from '../../components/ConfirmModal';
+import OfflineStatusBar from '../../components/offline/OfflineStatusBar';
 
 import DocenteDashboardView from './DocenteDashboardView';
 import DocenteAsistenciaView from './DocenteAsistenciaView';
@@ -89,6 +90,9 @@ export default function DocentePanel() {
 
       {/* Contenedor Principal */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Barra de Estado Offline para Docentes Rurales */}
+        <OfflineStatusBar />
+
         {/* Barra Superior */}
         <DocenteNavbar
           currentView={currentView}

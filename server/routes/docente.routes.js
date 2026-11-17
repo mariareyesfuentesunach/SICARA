@@ -206,10 +206,14 @@ router.get('/asistencia', async (req, res) => {
       ORDER BY a.apellidos ASC NULLS LAST, a.nombre ASC
     `;
 
+    // Validar formato UUID para evitar error de sintaxis en PostgreSQL ($3::uuid)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const materiaParam = targetMateria && uuidRegex.test(String(targetMateria).trim()) ? String(targetMateria).trim() : null;
+
     const alumnosRes = await db.query(alumnosQuery, [
       targetGrupo,
       id_escuela,
-      targetMateria || null,
+      materiaParam,
       fechaAsistencia,
     ]);
 
@@ -323,20 +327,79 @@ router.post('/asistencia', async (req, res) => {
       }
       guardados++;
 
-      // REGLA: Si el alumno tiene inasistencia sin justificación ("Falta Injustificada" o "Falta"),
-      // generar automáticamente una alerta en el sistema si no tiene ya una por inasistencia en la misma fecha
+      // REGLA DE ALERTAS:
+      // 1. Cada falta injustificada genera su alerta de inasistencia individual.
+      // 2. Si el alumno acumula 3 faltas (consecutivas o 3 acumuladas en el ciclo), se genera/actualiza una ALERTA CRÍTICA prioritaria.
       if (estadoFinal === 'Falta Injustificada' || estadoFinal === 'Falta') {
-        const checkAlerta = await db.query(
-          `SELECT id_alerta FROM alerta
-           WHERE id_alumno = $1 AND id_escuela = $2 AND tipo_alerta = 'Inasistencia' AND fecha_generacion = $3`,
-          [id_alumno, id_escuela, fecha]
+        // Consultar faltas injustificadas acumuladas históricas en el grupo
+        const totalFaltasRes = await db.query(
+          `SELECT COUNT(id_asistencia)::int AS total
+           FROM asistencia 
+           WHERE id_alumno = $1 AND id_grupo = $2 
+             AND (estado_asistencia = 'Falta Injustificada' OR estado_asistencia = 'Falta')`,
+          [id_alumno, id_grupo]
+        );
+        const totalFaltasAcumuladas = totalFaltasRes.rows[0]?.total || 0;
+
+        // Consultar los últimos registros de asistencia del alumno ordenados por fecha descendente
+        const ultimasAsistencias = await db.query(
+          `SELECT estado_asistencia 
+           FROM asistencia 
+           WHERE id_alumno = $1 AND id_grupo = $2 AND fecha <= $3
+           ORDER BY fecha DESC 
+           LIMIT 3`,
+          [id_alumno, id_grupo, fecha]
         );
 
-        if (checkAlerta.rows.length === 0) {
-          // Obtener nombre del alumno para la descripción
-          const alNameRes = await db.query(`SELECT nombre, apellidos FROM alumnos WHERE id_alumno = $1`, [id_alumno]);
-          const nom = alNameRes.rows[0] ? `${alNameRes.rows[0].nombre} ${alNameRes.rows[0].apellidos || ''}`.trim() : 'El alumno';
+        const faltasSeguidas = ultimasAsistencias.rows.filter(
+          (r) => r.estado_asistencia === 'Falta Injustificada' || r.estado_asistencia === 'Falta'
+        ).length;
 
+        const alNameRes = await db.query(`SELECT nombre, apellidos FROM alumnos WHERE id_alumno = $1`, [id_alumno]);
+        const nom = alNameRes.rows[0] ? `${alNameRes.rows[0].nombre} ${alNameRes.rows[0].apellidos || ''}`.trim() : 'El alumno';
+
+        // CONDICIÓN A: Si acumula 3 faltas consecutivas o 3 o más faltas en el ciclo -> Alerta Crítica Prioritaria
+        if (faltasSeguidas >= 3 || totalFaltasAcumuladas >= 3) {
+          const checkAlerta3 = await db.query(
+            `SELECT id_alerta FROM alerta
+             WHERE id_alumno = $1 AND id_escuela = $2 
+               AND tipo_alerta = 'Inasistencia Crítica (3 Faltas)' 
+               AND estado_alerta != 'Resuelta'`,
+            [id_alumno, id_escuela]
+          );
+
+          if (checkAlerta3.rows.length === 0) {
+            const motivoDetalle = faltasSeguidas >= 3
+              ? `${nom} ha acumulado 3 faltas consecutivas (última el ${fecha}).`
+              : `${nom} ha alcanzado un total de ${totalFaltasAcumuladas} faltas acumuladas en el ciclo escolar actual.`;
+
+            await db.query(
+              `INSERT INTO alerta (id_escuela, id_alumno, tipo_alerta, descripcion, observaciones, estado_alerta, fecha_generacion)
+               VALUES ($1, $2, 'Inasistencia Crítica (3 Faltas)', $3, $4, 'Pendiente', $5)`,
+              [
+                id_escuela,
+                id_alumno,
+                `Alerta Crítica de Inasistencia: ${motivoDetalle}`,
+                observaciones
+                  ? `Observación docente: ${observaciones}. Se requiere citatorio urgente con el padre o tutor legal.`
+                  : 'Se requiere citatorio urgente con el tutor legal por acumulación de 3 inasistencias.',
+                new Date(),
+              ]
+            );
+            alertasGeneradas++;
+          }
+        }
+
+        // CONDICIÓN B: Cada falta injustificada individual genera una alerta de seguimiento
+        const checkAlertaFecha = await db.query(
+          `SELECT id_alerta FROM alerta 
+           WHERE id_alumno = $1 AND id_escuela = $2 
+             AND tipo_alerta = 'Inasistencia' 
+             AND descripcion LIKE $3`,
+          [id_alumno, id_escuela, `%${fecha}%`]
+        );
+
+        if (checkAlertaFecha.rows.length === 0) {
           await db.query(
             `INSERT INTO alerta (id_escuela, id_alumno, tipo_alerta, descripcion, observaciones, estado_alerta, fecha_generacion)
              VALUES ($1, $2, 'Inasistencia', $3, $4, 'Pendiente', $5)`,
@@ -344,8 +407,8 @@ router.post('/asistencia', async (req, res) => {
               id_escuela,
               id_alumno,
               `Falta injustificada registrada para ${nom} en la fecha ${fecha}.`,
-              observaciones ? `Observación docente: ${observaciones}` : 'Inasistencia reportada en el pase de lista.',
-              fecha,
+              observaciones ? `Observación: ${observaciones}` : 'Inasistencia reportada en el pase de lista.',
+              new Date(),
             ]
           );
           alertasGeneradas++;
@@ -361,6 +424,124 @@ router.post('/asistencia', async (req, res) => {
   } catch (err) {
     console.error('Error en POST /api/docente/asistencia:', err);
     return res.status(500).json({ success: false, message: 'Error al registrar lista de asistencia.' });
+  }
+});
+
+// ============================================================
+// 3.1 HISTORIAL DE ASISTENCIAS POR RANGO DE FECHAS / MES Y DÍAS DE SEMANA
+// ============================================================
+router.get('/asistencia-historial', async (req, res) => {
+  try {
+    const { id_usuario, id_escuela } = req.user;
+    const { id_grupo, id_materia, fecha_inicio, fecha_fin, mes, anio } = req.query;
+
+    const docente = await getDocenteInfo(id_usuario, id_escuela);
+    if (!docente) return res.status(404).json({ success: false, message: 'Docente no encontrado.' });
+
+    if (!id_grupo) {
+      return res.status(400).json({ success: false, message: 'Debe seleccionar un grupo escolar.' });
+    }
+
+    // Calcular rango de fechas
+    let inicio = fecha_inicio;
+    let fin = fecha_fin;
+
+    if (!inicio || !fin) {
+      const hoy = new Date();
+      const currentYear = anio ? parseInt(anio, 10) : hoy.getFullYear();
+      const currentMonth = mes ? parseInt(mes, 10) : hoy.getMonth() + 1;
+
+      // Primer y último día del mes especificado
+      const firstDay = new Date(currentYear, currentMonth - 1, 1);
+      const lastDay = new Date(currentYear, currentMonth, 0);
+
+      inicio = firstDay.toISOString().split('T')[0];
+      fin = lastDay.toISOString().split('T')[0];
+    }
+
+    // 1. Obtener alumnos del grupo
+    const alumnosRes = await db.query(
+      `SELECT a.id_alumno, a.nombre, a.apellidos, a.curp
+       FROM alumnos a
+       JOIN grupo_alumno ga ON a.id_alumno = ga.id_alumno AND (ga.estado IS NULL OR ga.estado = 'Activo')
+       WHERE ga.id_grupo = $1 AND a.id_escuela = $2
+       ORDER BY a.apellidos ASC NULLS LAST, a.nombre ASC`,
+      [id_grupo, id_escuela]
+    );
+
+    // 2. Obtener todas las asistencias registradas en ese rango de fechas
+    const asistenciasRes = await db.query(
+      `SELECT asi.id_asistencia, asi.id_alumno, asi.fecha, asi.estado_asistencia, asi.observaciones
+       FROM asistencia asi
+       WHERE asi.id_grupo = $1 AND asi.fecha >= $2 AND asi.fecha <= $3
+       ORDER BY asi.fecha ASC`,
+      [id_grupo, inicio, fin]
+    );
+
+    // 3. Obtener lista de fechas únicas registradas con su día de la semana
+    const fechasMap = new Map();
+    asistenciasRes.rows.forEach((row) => {
+      const fStr = typeof row.fecha === 'string' ? row.fecha.split('T')[0] : row.fecha.toISOString().split('T')[0];
+      if (!fechasMap.has(fStr)) {
+        const dObj = new Date(fStr + 'T12:00:00');
+        const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        fechasMap.set(fStr, {
+          fecha: fStr,
+          diaNombre: diasSemana[dObj.getDay()],
+          diaNumero: dObj.getDate(),
+        });
+      }
+    });
+
+    const fechasRegistradas = Array.from(fechasMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    // 4. Mapear acumulación por alumno (asistencias, retardos, faltas justificadas e injustificadas)
+    const alumnosConHistorial = alumnosRes.rows.map((al) => {
+      const registrosAlumno = asistenciasRes.rows.filter((asi) => asi.id_alumno === al.id_alumno);
+      const asistenciasPorFecha = {};
+
+      let totalPresentes = 0;
+      let totalRetardos = 0;
+      let totalJustificadas = 0;
+      let totalFaltas = 0;
+
+      registrosAlumno.forEach((r) => {
+        const fStr = typeof r.fecha === 'string' ? r.fecha.split('T')[0] : r.fecha.toISOString().split('T')[0];
+        asistenciasPorFecha[fStr] = {
+          estado: r.estado_asistencia,
+          observaciones: r.observaciones,
+        };
+
+        if (r.estado_asistencia === 'Presente') totalPresentes++;
+        else if (r.estado_asistencia === 'Retardo') totalRetardos++;
+        else if (r.estado_asistencia === 'Justificada') totalJustificadas++;
+        else if (r.estado_asistencia === 'Falta Injustificada' || r.estado_asistencia === 'Falta') totalFaltas++;
+      });
+
+      return {
+        ...al,
+        asistenciasPorFecha,
+        totales: {
+          presentes: totalPresentes,
+          retardos: totalRetardos,
+          justificadas: totalJustificadas,
+          faltas: totalFaltas,
+          totalRegistros: registrosAlumno.length,
+          porcentajeAsistencia: registrosAlumno.length > 0 ? Math.round((totalPresentes / registrosAlumno.length) * 100) : 100,
+        },
+      };
+    });
+
+    return res.json({
+      success: true,
+      fecha_inicio: inicio,
+      fecha_fin: fin,
+      fechas: fechasRegistradas,
+      alumnos: alumnosConHistorial,
+    });
+  } catch (err) {
+    console.error('Error en GET /api/docente/asistencia-historial:', err);
+    return res.status(500).json({ success: false, message: 'Error al consultar historial de asistencia.' });
   }
 });
 
@@ -686,8 +867,12 @@ router.get('/alertas', async (req, res) => {
     const params = [docente.id_docente, id_escuela];
 
     if (tipo && tipo !== 'todos') {
-      params.push(tipo);
-      query += ` AND al.tipo_alerta = $${params.length}`;
+      if (tipo === 'Inasistencia') {
+        query += ` AND (al.tipo_alerta = 'Inasistencia' OR al.tipo_alerta LIKE 'Inasistencia%')`;
+      } else {
+        params.push(tipo);
+        query += ` AND al.tipo_alerta = $${params.length}`;
+      }
     }
 
     if (estado && estado !== 'todos') {

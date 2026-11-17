@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 import DirectivoSidebar from '../../components/directivo/DirectivoSidebar';
 import DirectivoNavbar from '../../components/directivo/DirectivoNavbar';
 import ConfirmModal from '../../components/ConfirmModal';
+import OfflineStatusBar from '../../components/offline/OfflineStatusBar';
 
 import DirectivoDashboardView from './DirectivoDashboardView';
 import DirectivoAlumnosView from './DirectivoAlumnosView';
@@ -80,6 +81,9 @@ export default function DirectivoPanel() {
 
       {/* Área Principal */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Barra de Estado Offline para Escuelas Rurales */}
+        <OfflineStatusBar />
+
         {/* Encabezado Superior con Identidad y Logotipo */}
         <DirectivoNavbar
           currentView={currentView}

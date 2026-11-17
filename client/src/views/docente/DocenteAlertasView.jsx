@@ -89,7 +89,7 @@ export default function DocenteAlertasView({ docente, asignaciones = [], onNavig
     return nom.includes(q) || curp.includes(q) || desc.includes(q);
   });
 
-  const conteoInasistencias = alertas.filter((a) => a.tipo_alerta === 'Inasistencia' && a.estado_alerta !== 'Resuelta').length;
+  const conteoInasistencias = alertas.filter((a) => (a.tipo_alerta === 'Inasistencia' || a.tipo_alerta?.startsWith('Inasistencia')) && a.estado_alerta !== 'Resuelta').length;
   const conteoBajoRendimiento = alertas.filter((a) => a.tipo_alerta === 'Bajo Rendimiento' && a.estado_alerta !== 'Resuelta').length;
 
   return (
@@ -201,13 +201,16 @@ export default function DocenteAlertasView({ docente, asignaciones = [], onNavig
           </div>
         ) : (
           alertasFiltradas.map((al) => {
-            const esInasistencia = al.tipo_alerta === 'Inasistencia';
+            const esInasistenciaCritica = al.tipo_alerta?.includes('Crítica');
+            const esInasistencia = al.tipo_alerta === 'Inasistencia' || al.tipo_alerta?.startsWith('Inasistencia');
             return (
               <div
                 key={al.id_alerta}
                 className={`p-4 rounded-card border transition-all bg-white shadow-soft flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
                   al.estado_alerta === 'Resuelta'
                     ? 'border-app-border opacity-75'
+                    : esInasistenciaCritica
+                    ? 'border-red-400 bg-red-50/40 ring-1 ring-red-400/50'
                     : esInasistencia
                     ? 'border-amber-300 bg-amber-50/20'
                     : 'border-red-300 bg-red-50/20'
@@ -216,17 +219,29 @@ export default function DocenteAlertasView({ docente, asignaciones = [], onNavig
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <div
                     className={`w-9 h-9 rounded-card flex items-center justify-center shrink-0 ${
-                      esInasistencia ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                      esInasistenciaCritica
+                        ? 'bg-red-100 text-red-800 font-black'
+                        : esInasistencia
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-red-100 text-red-700'
                     }`}
                   >
-                    {esInasistencia ? <UserX className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+                    {esInasistenciaCritica ? (
+                      <AlertTriangle className="w-5 h-5 text-red-600 animate-pulse" />
+                    ) : esInasistencia ? (
+                      <UserX className="w-5 h-5" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5" />
+                    )}
                   </div>
 
                   <div className="space-y-1 min-w-0 flex-1 text-xs">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          esInasistencia
+                          esInasistenciaCritica
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : esInasistencia
                             ? 'bg-amber-100 text-amber-800 border border-amber-300'
                             : 'bg-red-100 text-red-800 border border-red-300'
                         }`}

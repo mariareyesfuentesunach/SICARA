@@ -48,8 +48,12 @@ export default function LoginView({ initialEmail = '', onGoToRecuperar }) {
     setLoading(true);
 
     try {
-      await login(cleanEmail, contrasena);
-      showToast('Bienvenido al panel del Administrador General', 'success');
+      const res = await login(cleanEmail, contrasena);
+      if (res?.offline) {
+        showToast('Acceso sin conexión concedido. Trabajando en modo rural local.', 'info');
+      } else {
+        showToast('Bienvenido a SICARA', 'success');
+      }
       // Limpiar estados de memoria tras éxito
       setCorreo('');
       setContrasena('');

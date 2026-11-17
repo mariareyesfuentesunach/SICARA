@@ -6,6 +6,7 @@ import { api } from './services/api';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import ConfirmModal from './components/ConfirmModal';
+import OfflineStatusBar from './components/offline/OfflineStatusBar';
 
 import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
@@ -293,6 +294,9 @@ export default function App() {
 
       {/* Área Principal (desplazada por la barra lateral en lg) */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Barra Informativa de Estado Offline/Online */}
+        <OfflineStatusBar />
+
         {/* Barra Superior */}
         <Navbar
           currentView={currentView}

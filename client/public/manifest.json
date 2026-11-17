@@ -1,0 +1,17 @@
+{
+  "name": "SICARA - Sistema de Control y Asistencia Rural",
+  "short_name": "SICARA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDFBF7",
+  "theme_color": "#722F37",
+  "description": "Sistema de gestión escolar offline para escuelas rurales con sincronización automática.",
+  "icons": [
+    {
+      "src": "/data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23722F37' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 10v6M2 10l10-5 10 5-10 5z'/><path d='M6 12v5c3 3 9 3 12 0v-5'/></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
+
