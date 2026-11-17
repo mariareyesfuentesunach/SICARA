@@ -265,8 +265,8 @@ router.put('/:id/rol', authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /api/usuarios/:id/estado - Activar / Inactivar usuario
-router.put('/:id/estado', authMiddleware, async (req, res) => {
+// PUT /api/usuarios/:id/estado y /api/usuarios/:id/toggle-estado - Activar / Inactivar usuario
+router.put(['/:id/estado', '/:id/toggle-estado'], authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;

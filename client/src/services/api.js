@@ -327,12 +327,12 @@ export const api = {
       description: `Actualizar rol de usuario ${id}`,
     }),
   toggleEstadoUsuario: (id) =>
-    request(`/usuarios/${id}/toggle-estado`, {
+    request(`/usuarios/${id}/estado`, {
       method: 'PUT',
       description: `Activar/Inactivar usuario ${id}`,
     }),
   updateEstadoUsuario: (id, estado) =>
-    request(`/usuarios/${id}/toggle-estado`, {
+    request(`/usuarios/${id}/estado`, {
       method: 'PUT',
       body: JSON.stringify({ estado }),
       description: `Actualizar estado de usuario ${id}`,
@@ -363,12 +363,12 @@ export const api = {
       description: `Actualizar administrador ${id}`,
     }),
   toggleEstadoAdministrador: (id) =>
-    request(`/administradores/${id}/toggle-estado`, {
+    request(`/administradores/${id}/estado`, {
       method: 'PUT',
       description: `Activar/Inactivar administrador ${id}`,
     }),
   updateEstadoAdministrador: (id, estado) =>
-    request(`/administradores/${id}/toggle-estado`, {
+    request(`/administradores/${id}/estado`, {
       method: 'PUT',
       body: JSON.stringify({ estado }),
       description: `Actualizar estado de administrador ${id}`,

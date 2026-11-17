@@ -177,8 +177,8 @@ router.put('/:id', authMiddleware, principalAdminOnly, async (req, res) => {
   }
 });
 
-// PUT /api/administradores/:id/estado - Activar / Inactivar administrador adicional (Solo Principal)
-router.put('/:id/estado', authMiddleware, principalAdminOnly, async (req, res) => {
+// PUT /api/administradores/:id/estado y /api/administradores/:id/toggle-estado - Activar / Inactivar administrador adicional (Solo Principal)
+router.put(['/:id/estado', '/:id/toggle-estado'], authMiddleware, principalAdminOnly, async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;

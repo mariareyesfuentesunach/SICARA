@@ -149,11 +149,11 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /api/escuelas/:id/estado - Cambiar estado Activa / Inactiva
-router.put('/:id/estado', authMiddleware, async (req, res) => {
+// PUT /api/escuelas/:id/estado y /api/escuelas/:id/toggle-estado - Cambiar estado Activa / Inactiva
+router.put(['/:id/estado', '/:id/toggle-estado'], authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { estado_escuela } = req.body;
+    const estado_escuela = req.body.estado_escuela || req.body.estado;
 
     if (!estado_escuela || !['Activa', 'Inactiva'].includes(estado_escuela)) {
       return res.status(400).json({
